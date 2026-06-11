@@ -1,0 +1,36 @@
+# Blueprint (reference only — not part of source)
+blueprint/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+.env
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.backup
+*.tfplan
+nexusiot-key.pem
+
+# Docker
+*.log
+
+# Coverage
+.coverage
+htmlcov/
+coverage.xml
