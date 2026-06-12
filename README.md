@@ -24,8 +24,10 @@ The platform is designed to handle high-throughput, bursty sensor telemetry with
 ```text
 nexusiot/
 ├── devices/                 # IoT sensor simulators (CNC, Robotic Arm, Conveyor Belt)
+├── bridge/                  # MQTT → Kafka bridge microservice
 ├── processor/               # Stream processing worker (Kafka consumer, SHAP explainer)
 ├── api/                     # FastAPI application (REST + WebSocket endpoints)
+├── mosquitto/               # Mosquitto broker configuration
 ├── k8s/                     # Kubernetes manifests for all microservices
 ├── terraform/               # AWS Infrastructure as Code
 └── .github/workflows/       # CI/CD pipelines
@@ -39,8 +41,8 @@ We are building this platform layer by layer:
 
 - [x] **Step 1: Environment Setup** — Project scaffolding, virtual environments, and dependency management.
 - [x] **Step 2: Device Simulators** — Python classes that generate realistic, drifting, and noisy data for industrial sensors.
-- [x] **Step 3: MQTT Broker** — Setting up Mosquitto to receive device telemetry.
-- [ ] **Step 4: Kafka Pipeline** — Bridging MQTT to a durable Kafka stream.
+- [x] **Step 3: MQTT Broker** — Setting up Mosquitto via Docker Compose to receive device telemetry over port 1883.
+- [x] **Step 4: Kafka Pipeline** — 3-broker Kafka cluster (KRaft mode, no ZooKeeper) with an MQTT-to-Kafka bridge microservice that forwards all sensor data into the `raw-telemetry` topic with device-level partitioning for ordered, durable streaming.
 - [ ] **Step 5: Stream Processor** — Consuming data, validating schemas, and detecting anomalies.
 - [ ] **Step 6: SHAP Explainer** — Explaining *why* an anomaly was flagged.
 - [ ] **Step 7: TimescaleDB** — High-performance time-series data storage.
@@ -54,23 +56,64 @@ We are building this platform layer by layer:
 
 ## 💻 Getting Started (Local Development)
 
-*(Instructions will be added here as we progress through the infrastructure steps.)*
+### Prerequisites
 
-1. Ensure you have Python 3.13+ installed.
-2. Create and activate the virtual environment:
-   ```bash
-   python3 -m venv .venv
-   source .venv/bin/activate
-   ```
-3. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
-4. Start the MQTT Broker using Docker Compose:
-   ```bash
-   docker compose up -d mosquitto
-   ```
-5. Run a device simulator to test data generation:
-   ```bash
-   python -m devices.cnc_machine
-   ```
+- Python 3.13+
+- Docker & Docker Compose
+
+### 1. Clone & Setup
+
+```bash
+git clone https://github.com/MrDadhich456/NexusIoT.git
+cd NexusIoT
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+### 2. Start Infrastructure
+
+```bash
+# Start the full stack: Mosquitto + Kafka cluster (3 brokers) + Kafka UI + Bridge
+docker compose up -d
+```
+
+### 3. Verify Services
+
+```bash
+# Check all containers are running
+docker compose ps
+
+# Open Kafka UI in browser
+# http://localhost:8080
+```
+
+### 4. Run a Device Simulator
+
+```bash
+# Start a CNC machine simulator (publishes to MQTT → Bridge → Kafka)
+python -m devices.cnc_machine
+```
+
+### 5. Verify End-to-End Data Flow
+
+```bash
+# Consume messages from Kafka to confirm data is flowing
+docker compose exec kafka-1 kafka-console-consumer.sh \
+  --bootstrap-server localhost:9092 \
+  --topic raw-telemetry \
+  --from-beginning
+```
+
+---
+
+## 🔧 Services & Ports
+
+| Service | Container | Port | Description |
+|---------|-----------|------|-------------|
+| Mosquitto | `nexusiot-mosquitto` | `1883` | MQTT broker for device telemetry |
+| Kafka Broker 1 | `nexusiot-kafka-1` | `19094` | Kafka (external listener) |
+| Kafka Broker 2 | `nexusiot-kafka-2` | `29094` | Kafka (external listener) |
+| Kafka Broker 3 | `nexusiot-kafka-3` | `39094` | Kafka (external listener) |
+| Kafka UI | `nexusiot-kafka-ui` | `8080` | Web dashboard for Kafka inspection |
+| Bridge | `nexusiot-bridge` | — | MQTT → Kafka forwarder (no external port) |
