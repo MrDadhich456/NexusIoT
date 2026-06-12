@@ -1,0 +1,4 @@
+# MQTT-Kafka Bridge dependencies (minimal — keeps Docker image small)
+paho-mqtt==2.1.0
+confluent-kafka==2.6.1
+structlog==24.4.0

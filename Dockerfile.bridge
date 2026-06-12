@@ -1,1 +1,16 @@
-# Dockerfile.bridge
+FROM python:3.13-slim
+
+WORKDIR /app
+
+# Install only bridge-specific dependencies (keeps image lean)
+COPY requirements-bridge.txt .
+RUN pip install --no-cache-dir -r requirements-bridge.txt
+
+# Copy bridge source code
+COPY bridge/ ./bridge/
+
+# Run as non-root user (security best practice)
+RUN useradd -r bridgeuser
+USER bridgeuser
+
+CMD ["python", "-m", "bridge.mqtt_kafka_bridge"]
