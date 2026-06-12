@@ -39,7 +39,7 @@ We are building this platform layer by layer:
 
 - [x] **Step 1: Environment Setup** — Project scaffolding, virtual environments, and dependency management.
 - [x] **Step 2: Device Simulators** — Python classes that generate realistic, drifting, and noisy data for industrial sensors.
-- [ ] **Step 3: MQTT Broker** — Setting up Mosquitto to receive device telemetry.
+- [x] **Step 3: MQTT Broker** — Setting up Mosquitto to receive device telemetry.
 - [ ] **Step 4: Kafka Pipeline** — Bridging MQTT to a durable Kafka stream.
 - [ ] **Step 5: Stream Processor** — Consuming data, validating schemas, and detecting anomalies.
 - [ ] **Step 6: SHAP Explainer** — Explaining *why* an anomaly was flagged.
@@ -66,7 +66,11 @@ We are building this platform layer by layer:
    ```bash
    pip install -r requirements.txt
    ```
-4. Run a device simulator to test data generation:
+4. Start the MQTT Broker using Docker Compose:
+   ```bash
+   docker compose up -d mosquitto
+   ```
+5. Run a device simulator to test data generation:
    ```bash
    python -m devices.cnc_machine
    ```
