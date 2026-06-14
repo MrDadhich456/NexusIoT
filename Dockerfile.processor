@@ -1,1 +1,19 @@
-# Dockerfile.processor
+FROM python:3.13-slim
+
+WORKDIR /app
+
+# Install only processor-specific dependencies (keeps image lean)
+COPY requirements-processor.txt .
+RUN pip install --no-cache-dir -r requirements-processor.txt
+
+# Copy processor source code
+COPY processor/ ./processor/
+
+# Run as non-root user (security best practice)
+RUN useradd -r processoruser
+USER processoruser
+
+# Expose Prometheus metrics port
+EXPOSE 8001
+
+CMD ["python", "-m", "processor.consumer"]
