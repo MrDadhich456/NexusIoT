@@ -1,0 +1,5 @@
+# Stream Processor dependencies (minimal — keeps Docker image small)
+confluent-kafka==2.6.1
+pydantic==2.9.0
+structlog==24.4.0
+prometheus-client==0.21.0

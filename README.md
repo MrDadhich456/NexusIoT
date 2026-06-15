@@ -25,7 +25,7 @@ The platform is designed to handle high-throughput, bursty sensor telemetry with
 nexusiot/
 ├── devices/                 # IoT sensor simulators (CNC, Robotic Arm, Conveyor Belt)
 ├── bridge/                  # MQTT → Kafka bridge microservice
-├── processor/               # Stream processing worker (Kafka consumer, SHAP explainer)
+├── processor/               # Stream processing worker (Kafka consumer, Z-score detector)
 ├── api/                     # FastAPI application (REST + WebSocket endpoints)
 ├── mosquitto/               # Mosquitto broker configuration
 ├── k8s/                     # Kubernetes manifests for all microservices
@@ -43,7 +43,7 @@ We are building this platform layer by layer:
 - [x] **Step 2: Device Simulators** — Python classes that generate realistic, drifting, and noisy data for industrial sensors.
 - [x] **Step 3: MQTT Broker** — Setting up Mosquitto via Docker Compose to receive device telemetry over port 1883.
 - [x] **Step 4: Kafka Pipeline** — 3-broker Kafka cluster (KRaft mode, no ZooKeeper) with an MQTT-to-Kafka bridge microservice that forwards all sensor data into the `raw-telemetry` topic with device-level partitioning for ordered, durable streaming.
-- [ ] **Step 5: Stream Processor** — Consuming data, validating schemas, and detecting anomalies.
+- [x] **Step 5: Stream Processor** — Kafka consumer microservice with Pydantic schema validation, sliding-window Z-score anomaly detection, anomaly event production to the `anomaly-events` topic, and Prometheus metrics on port 8001.
 - [ ] **Step 6: SHAP Explainer** — Explaining *why* an anomaly was flagged.
 - [ ] **Step 7: TimescaleDB** — High-performance time-series data storage.
 - [ ] **Step 8: FastAPI + WebSocket** — Live streaming data to the frontend.
@@ -117,3 +117,4 @@ docker compose exec kafka-1 kafka-console-consumer.sh \
 | Kafka Broker 3 | `nexusiot-kafka-3` | `39094` | Kafka (external listener) |
 | Kafka UI | `nexusiot-kafka-ui` | `8080` | Web dashboard for Kafka inspection |
 | Bridge | `nexusiot-bridge` | — | MQTT → Kafka forwarder (no external port) |
+| Processor | `nexusiot-processor` | `8001` | Stream processor (anomaly detection + Prometheus metrics) |
