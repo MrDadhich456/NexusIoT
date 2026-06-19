@@ -44,7 +44,7 @@ We are building this platform layer by layer:
 - [x] **Step 3: MQTT Broker** — Setting up Mosquitto via Docker Compose to receive device telemetry over port 1883.
 - [x] **Step 4: Kafka Pipeline** — 3-broker Kafka cluster (KRaft mode, no ZooKeeper) with an MQTT-to-Kafka bridge microservice that forwards all sensor data into the `raw-telemetry` topic with device-level partitioning for ordered, durable streaming.
 - [x] **Step 5: Stream Processor** — Kafka consumer microservice with Pydantic schema validation, sliding-window Z-score anomaly detection, anomaly event production to the `anomaly-events` topic, and Prometheus metrics on port 8001.
-- [ ] **Step 6: SHAP Explainer** — Explaining *why* an anomaly was flagged.
+- [x] **Step 6: SHAP Explainer** — Explainable AI layer using IsolationForest + SHAP TreeExplainer. Per-device models train on normal readings, then compute per-feature contribution percentages (e.g., `spindle_rpm: 68%, vibration_g: 22%`) for every anomaly alert. Enriched events on the `anomaly-events` topic now include `shap_contributions`.
 - [ ] **Step 7: TimescaleDB** — High-performance time-series data storage.
 - [ ] **Step 8: FastAPI + WebSocket** — Live streaming data to the frontend.
 - [ ] **Step 9: Observability** — Metrics, logging, and dashboards.
