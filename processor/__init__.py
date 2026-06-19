@@ -7,3 +7,4 @@ from .validator import (
     DEVICE_SCHEMAS,
 )
 from .detector import AnomalyDetector
+from .explainer import SHAPExplainer

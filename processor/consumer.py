@@ -3,15 +3,21 @@ Stream Processor — Kafka Consumer Main Loop
 =============================================
 The beating heart of the stream processor. Runs forever, pulling messages
 from Kafka's raw-telemetry topic, validating them, running anomaly detection,
-and producing alerts to the anomaly-events topic.
+explaining anomalies with SHAP, and producing enriched alerts.
 
-Data Flow:
-  Kafka [raw-telemetry] → Consume → Validate → Detect → Produce [anomaly-events]
+Data Flow (Step 5 + Step 6):
+  Kafka [raw-telemetry]
+    → Consume
+    → Validate (Pydantic)
+    → Detect (Z-score)
+    → IF anomaly: Explain (SHAP) → Produce enriched event [anomaly-events]
+    → IF normal: Feed into SHAP training buffer
 
 Why this architecture?
   - Consumer groups enable horizontal scaling (run N instances, Kafka auto-splits)
   - Manual offset commit = at-least-once processing (never skip a message)
   - Idempotent producer = safe retries (no duplicate anomaly alerts)
+  - SHAP explainer adds per-feature contribution % to every anomaly alert
   - Prometheus metrics = observable in Grafana dashboards (Step 9)
 """
 
@@ -30,6 +36,7 @@ import structlog
 
 from .validator import validate_telemetry
 from .detector import AnomalyDetector
+from .explainer import SHAPExplainer
 
 structlog.configure(
     wrapper_class=structlog.make_filtering_bound_logger(logging.INFO),
@@ -65,6 +72,21 @@ anomalies_detected = Counter(
 processing_lag = Gauge(
     "processor_lag_seconds",
     "Time from device timestamp to processor processing (seconds)",
+)
+
+# SHAP Explainer metrics (Step 6)
+# Track how many anomalies got SHAP explanations vs. how many were
+# skipped because the model was still warming up (not enough normal data).
+shap_explanations = Counter(
+    "processor_shap_explanations_total",
+    "Total SHAP explanations successfully computed",
+    ["device_type"],
+)
+
+shap_model_not_ready = Counter(
+    "processor_shap_model_not_ready_total",
+    "Times SHAP explanation was skipped (model not yet trained)",
+    ["device_type"],
 )
 
 
@@ -211,6 +233,11 @@ def run():
     # Initialize the anomaly detector (sliding windows start empty)
     detector = AnomalyDetector(window_size=100, z_threshold=3.5, min_samples=20)
 
+    # Initialize the SHAP explainer (Step 6)
+    # min_samples=100: ~3.3 min warmup before first model training
+    # retrain_every=200: retrain every ~6.6 min to adapt to drift
+    explainer = SHAPExplainer(min_samples=100, retrain_every=200)
+
     total_processed = 0
     total_anomalies = 0
 
@@ -253,6 +280,42 @@ def run():
 
         # ─── Step 4: Detect anomalies ────────────────────────────
         anomalies = detector.check(telemetry)
+
+        # ─── Step 4b: SHAP Explainer (Step 6) ────────────────────
+        # Two paths:
+        #   A) Anomaly detected → explain WHY with SHAP contributions
+        #   B) No anomaly → feed this normal reading into SHAP buffer
+        if anomalies:
+            # Path A: Compute SHAP explanation for the full reading.
+            # We pass ALL metrics (not just the anomalous field) so SHAP
+            # can reveal cross-metric correlations — e.g., "vibration
+            # spiked BUT the primary driver was spindle RPM dropping".
+            shap_result = explainer.explain(
+                device_id=telemetry.device_id,
+                device_type=device_type,
+                telemetry=telemetry,
+            )
+
+            # Attach SHAP contributions to EVERY anomaly event from
+            # this reading. If model isn't trained yet, shap_result
+            # is None → anomaly event has shap_contributions: null.
+            for anomaly in anomalies:
+                anomaly["shap_contributions"] = shap_result
+
+            # Update Prometheus metrics for SHAP observability
+            if shap_result:
+                shap_explanations.labels(device_type=device_type).inc()
+            else:
+                shap_model_not_ready.labels(device_type=device_type).inc()
+        else:
+            # Path B: Normal reading — feed into SHAP training buffer.
+            # The IsolationForest only trains on non-anomalous data so
+            # it learns what "normal" looks like for this device.
+            explainer.update_normal(
+                device_id=telemetry.device_id,
+                device_type=device_type,
+                telemetry=telemetry,
+            )
 
         # ─── Step 5: Produce anomaly alerts ──────────────────────
         for anomaly in anomalies:
