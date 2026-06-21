@@ -3,21 +3,24 @@ Stream Processor — Kafka Consumer Main Loop
 =============================================
 The beating heart of the stream processor. Runs forever, pulling messages
 from Kafka's raw-telemetry topic, validating them, running anomaly detection,
-explaining anomalies with SHAP, and producing enriched alerts.
+explaining anomalies with SHAP, persisting to TimescaleDB, and producing
+enriched alerts.
 
-Data Flow (Step 5 + Step 6):
+Data Flow (Step 5 + Step 6 + Step 7):
   Kafka [raw-telemetry]
     → Consume
     → Validate (Pydantic)
     → Detect (Z-score)
-    → IF anomaly: Explain (SHAP) → Produce enriched event [anomaly-events]
+    → IF anomaly: Explain (SHAP) → Write to TimescaleDB → Produce [anomaly-events]
     → IF normal: Feed into SHAP training buffer
+    → Write ALL valid readings to TimescaleDB
 
 Why this architecture?
   - Consumer groups enable horizontal scaling (run N instances, Kafka auto-splits)
   - Manual offset commit = at-least-once processing (never skip a message)
   - Idempotent producer = safe retries (no duplicate anomaly alerts)
   - SHAP explainer adds per-feature contribution % to every anomaly alert
+  - TimescaleDB gives permanent, queryable storage for historical analysis
   - Prometheus metrics = observable in Grafana dashboards (Step 9)
 """
 
@@ -37,6 +40,7 @@ import structlog
 from .validator import validate_telemetry
 from .detector import AnomalyDetector
 from .explainer import SHAPExplainer
+from .writer import TimescaleWriter
 
 structlog.configure(
     wrapper_class=structlog.make_filtering_bound_logger(logging.INFO),
@@ -52,6 +56,8 @@ INPUT_TOPIC    = os.getenv("INPUT_TOPIC", "raw-telemetry")
 OUTPUT_TOPIC   = os.getenv("OUTPUT_TOPIC", "anomaly-events")
 CONSUMER_GROUP = os.getenv("CONSUMER_GROUP", "stream-processor")
 METRICS_PORT   = int(os.getenv("METRICS_PORT", "8001"))
+TIMESCALE_DSN  = os.getenv("TIMESCALE_DSN",
+                           "postgresql://nexusiot:nexusiot@localhost:5432/nexusiot")
 
 
 # ─── Prometheus Metrics ──────────────────────────────────────────────
@@ -87,6 +93,20 @@ shap_model_not_ready = Counter(
     "processor_shap_model_not_ready_total",
     "Times SHAP explanation was skipped (model not yet trained)",
     ["device_type"],
+)
+
+# TimescaleDB metrics (Step 7)
+# Track successful and failed database writes for alerting.
+db_writes = Counter(
+    "processor_db_writes_total",
+    "Total successful database writes",
+    ["table"],    # table: "telemetry" or "anomaly_events"
+)
+
+db_errors = Counter(
+    "processor_db_errors_total",
+    "Total failed database writes (after all retries)",
+    ["table"],
 )
 
 
@@ -208,7 +228,8 @@ def run():
              kafka=KAFKA_BROKERS,
              input_topic=INPUT_TOPIC,
              output_topic=OUTPUT_TOPIC,
-             consumer_group=CONSUMER_GROUP)
+             consumer_group=CONSUMER_GROUP,
+             timescale_dsn="***")
 
     # Start Prometheus metrics HTTP server on port 8001
     start_http_server(METRICS_PORT)
@@ -237,6 +258,11 @@ def run():
     # min_samples=100: ~3.3 min warmup before first model training
     # retrain_every=200: retrain every ~6.6 min to adapt to drift
     explainer = SHAPExplainer(min_samples=100, retrain_every=200)
+
+    # Initialize the TimescaleDB writer (Step 7)
+    # Connection pool opens 2 connections immediately, scales to 5 on burst.
+    # The writer handles retries internally — a failed write won't crash the loop.
+    writer = TimescaleWriter(dsn=TIMESCALE_DSN)
 
     total_processed = 0
     total_anomalies = 0
@@ -333,12 +359,38 @@ def run():
         # Trigger delivery callbacks for queued messages
         producer.poll(0)
 
-        # ─── Step 6: Commit offset ───────────────────────────────
+        # ─── Step 6: Write to TimescaleDB ────────────────────────
+        # Write EVERY valid reading to the telemetry table.
+        # We extract all sensor-specific fields (everything except
+        # the base fields) into a metrics dict for JSONB storage.
+        base_fields = {"device_id", "device_type", "timestamp", "bridge_received_at"}
+        metrics = {
+            k: v for k, v in telemetry.model_dump().items()
+            if k not in base_fields
+        }
+        if writer.write_telemetry(
+            device_id=telemetry.device_id,
+            device_type=device_type,
+            timestamp=telemetry.timestamp,
+            metrics=metrics,
+        ):
+            db_writes.labels(table="telemetry").inc()
+        else:
+            db_errors.labels(table="telemetry").inc()
+
+        # Write each anomaly event to the anomaly_events table.
+        for anomaly in anomalies:
+            if writer.write_anomaly(anomaly):
+                db_writes.labels(table="anomaly_events").inc()
+            else:
+                db_errors.labels(table="anomaly_events").inc()
+
+        # ─── Step 7: Commit offset ───────────────────────────────
         # "I'm done processing this message" — Kafka records the offset
         # so if we restart, we pick up from where we left off.
         consumer.commit(message=msg)
 
-        # ─── Step 7: Update metrics ──────────────────────────────
+        # ─── Step 8: Update metrics ──────────────────────────────
         messages_processed.labels(device_type=device_type, status="valid").inc()
 
         # Processing lag: how long from device → processor
@@ -358,6 +410,7 @@ def run():
     log.info("flushing_producer")
     producer.flush(timeout=10)
     consumer.close()
+    writer.close()   # Drain the TimescaleDB connection pool
     log.info("processor_stopped",
              total_processed=total_processed,
              total_anomalies=total_anomalies)
