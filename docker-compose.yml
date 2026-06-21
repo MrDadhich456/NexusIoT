@@ -142,6 +142,30 @@ services:
     restart: unless-stopped
 
   # ──────────────────────────────────────────────────────────────────────
+  # TimescaleDB — Time-series database (PostgreSQL + hypertables)
+  # Stores all telemetry readings and anomaly events permanently.
+  # schema.sql auto-runs on first boot via docker-entrypoint-initdb.d.
+  # ──────────────────────────────────────────────────────────────────────
+  timescaledb:
+    image: timescale/timescaledb:latest-pg16
+    container_name: nexusiot-timescaledb
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: nexusiot
+      POSTGRES_PASSWORD: nexusiot
+      POSTGRES_DB: nexusiot
+    volumes:
+      - timescale_data:/var/lib/postgresql/data
+      - ./schema.sql:/docker-entrypoint-initdb.d/001-schema.sql:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nexusiot"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # ──────────────────────────────────────────────────────────────────────
   # Stream Processor — Consumes raw-telemetry, validates, detects anomalies
   # Produces anomaly alerts to anomaly-events topic
   # Exposes Prometheus metrics on port 8001
@@ -159,12 +183,15 @@ services:
       OUTPUT_TOPIC: anomaly-events
       CONSUMER_GROUP: stream-processor
       METRICS_PORT: "8001"
+      TIMESCALE_DSN: postgresql://nexusiot:nexusiot@timescaledb:5432/nexusiot
     depends_on:
       kafka-1:
         condition: service_healthy
       kafka-2:
         condition: service_healthy
       kafka-3:
+        condition: service_healthy
+      timescaledb:
         condition: service_healthy
     restart: unless-stopped
 
@@ -174,3 +201,4 @@ volumes:
   kafka_1_data:
   kafka_2_data:
   kafka_3_data:
+  timescale_data:
