@@ -1,1 +1,23 @@
-# Dockerfile.api
+FROM python:3.13-slim
+
+WORKDIR /app
+
+# Install only API-specific dependencies (keeps image lean)
+COPY requirements-api.txt .
+RUN pip install --no-cache-dir -r requirements-api.txt
+
+# Copy API source code
+COPY api/ ./api/
+
+# Run as non-root user (security best practice)
+RUN useradd -r apiuser
+USER apiuser
+
+# Expose FastAPI HTTP + WebSocket port
+EXPOSE 8000
+
+# Run with uvicorn (ASGI server)
+# --host 0.0.0.0: bind to all interfaces (required inside Docker)
+# --port 8000: standard API port
+# --workers 1: single worker (sufficient for our scale, WebSocket needs shared state)
+CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000"]
