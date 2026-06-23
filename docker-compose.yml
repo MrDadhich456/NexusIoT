@@ -195,6 +195,35 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  # ──────────────────────────────────────────────────────────────────────
+  # FastAPI API Gateway — REST + WebSocket endpoints
+  # REST: queries TimescaleDB for historical telemetry and anomaly data
+  # WebSocket: consumes Kafka topics and fans out to browser clients
+  # Access API docs at http://localhost:8000/docs
+  # ──────────────────────────────────────────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    container_name: nexusiot-api
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql://nexusiot:nexusiot@timescaledb:5432/nexusiot
+      KAFKA_BROKERS: kafka-1:9092,kafka-2:9092,kafka-3:9092
+      INPUT_TOPIC: raw-telemetry
+      OUTPUT_TOPIC: anomaly-events
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+      kafka-1:
+        condition: service_healthy
+      kafka-2:
+        condition: service_healthy
+      kafka-3:
+        condition: service_healthy
+    restart: unless-stopped
+
 volumes:
   mosquitto_data:
   mosquitto_log:

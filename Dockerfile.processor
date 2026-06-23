@@ -3,8 +3,15 @@ FROM python:3.13-slim
 WORKDIR /app
 
 # Install only processor-specific dependencies (keeps image lean)
+# SHAP requires g++ to compile C extensions — install build tools,
+# pip install, then remove build tools to keep final image small.
 COPY requirements-processor.txt .
-RUN pip install --no-cache-dir -r requirements-processor.txt
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends gcc g++ && \
+    pip install --no-cache-dir -r requirements-processor.txt && \
+    apt-get purge -y gcc g++ && \
+    apt-get autoremove -y && \
+    rm -rf /var/lib/apt/lists/*
 
 # Copy processor source code
 COPY processor/ ./processor/

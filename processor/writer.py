@@ -26,6 +26,7 @@ import json
 import time
 import logging
 from datetime import datetime, timezone
+from typing import LiteralString
 
 import structlog
 from psycopg_pool import ConnectionPool
@@ -67,7 +68,7 @@ class TimescaleWriter:
     # Server-side prepared statements cache the query plan after the
     # first execution, making subsequent INSERTs ~30% faster.
 
-    INSERT_TELEMETRY = """
+    INSERT_TELEMETRY: LiteralString = """
         INSERT INTO telemetry (time, device_id, device_type, metrics)
         VALUES (%s, %s, %s, %s)
     """
@@ -77,7 +78,7 @@ class TimescaleWriter:
     #   %s 3 → device_type: TEXT        — e.g. "cnc_machine"
     #   %s 4 → metrics:     JSONB       — all sensor values as a JSON string
 
-    INSERT_ANOMALY = """
+    INSERT_ANOMALY: LiteralString = """
         INSERT INTO anomaly_events
             (time, detected_at, device_id, device_type,
              field, value, mean, std, z_score,
@@ -258,7 +259,7 @@ class TimescaleWriter:
             device_id=anomaly["device_id"],
         )
 
-    def _execute_with_retry(self, query: str, params: tuple,
+    def _execute_with_retry(self, query: LiteralString, params: tuple,
                             operation: str, device_id: str,
                             max_retries: int = 3) -> bool:
         """

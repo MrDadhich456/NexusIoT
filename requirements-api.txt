@@ -1,0 +1,26 @@
+# FastAPI + WebSocket Gateway dependencies (minimal — keeps Docker image small)
+# Each package is pinned to the exact version tested to prevent surprises.
+
+# Web framework + ASGI server
+# FastAPI: automatic OpenAPI docs, Pydantic integration, WebSocket support
+# uvicorn[standard]: includes uvloop (2x faster event loop) + httptools
+fastapi==0.115.0
+uvicorn[standard]==0.32.0
+
+# WebSocket protocol library (used by uvicorn for WS connections)
+websockets==13.1
+
+# Async PostgreSQL driver (for TimescaleDB queries)
+# asyncpg is ~3x faster than psycopg async for read-heavy workloads
+# We use it directly (no SQLAlchemy) since all queries are raw SELECTs
+asyncpg==0.30.0
+
+# Data validation + response serialization
+pydantic==2.9.0
+
+# Kafka consumer for WebSocket fan-out (live streaming from topics)
+confluent-kafka==2.6.1
+
+# Observability
+prometheus-client==0.21.0
+structlog==24.4.0

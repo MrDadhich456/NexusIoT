@@ -46,7 +46,7 @@ We are building this platform layer by layer:
 - [x] **Step 5: Stream Processor** — Kafka consumer microservice with Pydantic schema validation, sliding-window Z-score anomaly detection, anomaly event production to the `anomaly-events` topic, and Prometheus metrics on port 8001.
 - [x] **Step 6: SHAP Explainer** — Explainable AI layer using IsolationForest + SHAP TreeExplainer. Per-device models train on normal readings, then compute per-feature contribution percentages (e.g., `spindle_rpm: 68%, vibration_g: 22%`) for every anomaly alert. Enriched events on the `anomaly-events` topic now include `shap_contributions`.
 - [x] **Step 7: TimescaleDB** — High-performance time-series data storage with auto-partitioned hypertables (`telemetry` for all readings, `anomaly_events` for alerts + SHAP). Connection-pooled writer with retry logic. JSONB metrics storage for zero-migration device extensibility.
-- [ ] **Step 8: FastAPI + WebSocket** — Live streaming data to the frontend.
+- [x] **Step 8: FastAPI + WebSocket** — Production API gateway with REST endpoints for historical telemetry/anomaly queries (TimescaleDB), real-time WebSocket streaming via Kafka fan-out consumer, SHAP anomaly explanation endpoint, Prometheus metrics, and Kubernetes-ready health checks. Interactive API docs at `/docs`.
 - [ ] **Step 9: Observability** — Metrics, logging, and dashboards.
 - [ ] **Step 10: Kubernetes** — Container orchestration for all services.
 - [ ] **Step 11: Terraform** — Provisioning free-tier AWS infrastructure.
@@ -119,3 +119,4 @@ docker compose exec kafka-1 kafka-console-consumer.sh \
 | Bridge | `nexusiot-bridge` | — | MQTT → Kafka forwarder (no external port) |
 | Processor | `nexusiot-processor` | `8001` | Stream processor (anomaly detection + Prometheus metrics) |
 | TimescaleDB | `nexusiot-timescaledb` | `5432` | Time-series database (PostgreSQL + hypertables) |
+| API Gateway | `nexusiot-api` | `8000` | FastAPI REST + WebSocket (docs at http://localhost:8000/docs) |
