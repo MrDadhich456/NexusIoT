@@ -224,6 +224,42 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  # ──────────────────────────────────────────────────────────────────────
+  # Prometheus — Time-series metrics scraper
+  # Scrapes API gateway and stream processor metrics
+  # Access at http://localhost:9090
+  # ──────────────────────────────────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: nexusiot-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    restart: unless-stopped
+
+  # ──────────────────────────────────────────────────────────────────────
+  # Grafana — Metrics dashboards
+  # Auto-provisioned with Prometheus datasource and NexusIoT dashboard
+  # Access at http://localhost:3000
+  # ──────────────────────────────────────────────────────────────────────
+  grafana:
+    image: grafana/grafana:latest
+    container_name: nexusiot-grafana
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/etc/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+
 volumes:
   mosquitto_data:
   mosquitto_log:
@@ -231,3 +267,4 @@ volumes:
   kafka_2_data:
   kafka_3_data:
   timescale_data:
+  grafana_data:

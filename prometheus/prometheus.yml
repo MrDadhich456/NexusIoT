@@ -1,0 +1,18 @@
+global:
+  scrape_interval: 5s # How frequently to scrape targets
+  evaluation_interval: 5s
+
+scrape_configs:
+  - job_name: "prometheus"
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  - job_name: "nexusiot-processor"
+    static_configs:
+      # processor container name and metrics port
+      - targets: ["nexusiot-processor:8001"]
+
+  - job_name: "nexusiot-api"
+    static_configs:
+      # api container name and metrics port
+      - targets: ["nexusiot-api:8000"]

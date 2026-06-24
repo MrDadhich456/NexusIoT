@@ -1,0 +1,12 @@
+apiVersion: 1
+
+providers:
+  - name: 'NexusIoT Dashboards'
+    orgId: 1
+    folder: 'NexusIoT'
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 10
+    options:
+      # This maps to the path inside the container
+      path: /etc/grafana/provisioning/dashboards
