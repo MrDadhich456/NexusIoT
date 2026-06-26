@@ -1,0 +1,27 @@
+# ============================================================================
+# NexusIoT — Device Simulator Dockerfile
+# ============================================================================
+# Builds a container that runs all 3 device simulators (CNC, Robotic Arm,
+# Conveyor Belt) concurrently using the k8s_runner.py script.
+#
+# Uses the same base image as other NexusIoT services for consistency.
+# Only needs paho-mqtt for MQTT communication — very lightweight image.
+# ============================================================================
+
+FROM python:3.13-slim
+
+WORKDIR /app
+
+# Install only the MQTT client library (devices don't need Kafka, SHAP, etc.)
+COPY requirements.txt .
+RUN pip install --no-cache-dir paho-mqtt>=2.0
+
+# Copy device simulator source code
+COPY devices/ ./devices/
+
+# Run as non-root user (security best practice)
+RUN useradd -r deviceuser
+USER deviceuser
+
+# Run the multi-device K8s runner script
+CMD ["python", "-m", "devices.k8s_runner"]

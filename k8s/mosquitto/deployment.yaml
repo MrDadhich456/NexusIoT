@@ -1,1 +1,71 @@
-# deployment
+# ============================================================================
+# NexusIoT — Mosquitto MQTT Broker Deployment
+# ============================================================================
+# Single-replica Deployment (MQTT is inherently single-instance).
+# The mosquitto.conf is mounted from a ConfigMap created by deploy.sh.
+# ============================================================================
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mosquitto
+  namespace: nexusiot
+  labels:
+    app.kubernetes.io/name: mosquitto
+    app.kubernetes.io/part-of: nexusiot
+spec:
+  replicas: 1                            # MQTT brokers are single-instance (no built-in clustering)
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: mosquitto
+
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: mosquitto
+        app.kubernetes.io/part-of: nexusiot
+    spec:
+      containers:
+        - name: mosquitto
+          image: eclipse-mosquitto:2       # Official Eclipse Mosquitto v2 image
+          imagePullPolicy: IfNotPresent
+
+          ports:
+            - name: mqtt
+              containerPort: 1883          # Standard MQTT port
+
+          # --- Config Volume ---
+          # Mounts our custom mosquitto.conf (listener 1883, allow_anonymous true)
+          # ConfigMap "mosquitto-config" is created by deploy.sh from mosquitto/mosquitto.conf
+          volumeMounts:
+            - name: config
+              mountPath: /mosquitto/config/mosquitto.conf   # Override default config
+              subPath: mosquitto.conf                       # Mount single file, not entire dir
+
+          # --- Resource Limits ---
+          resources:
+            requests:
+              cpu: 50m                     # Very lightweight — just forwarding MQTT messages
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+
+          # --- Health Check ---
+          # TCP check on the MQTT port — if Mosquitto can accept connections, it's healthy
+          readinessProbe:
+            tcpSocket:
+              port: 1883
+            initialDelaySeconds: 5
+            periodSeconds: 10
+
+          livenessProbe:
+            tcpSocket:
+              port: 1883
+            initialDelaySeconds: 10
+            periodSeconds: 20
+
+      volumes:
+        - name: config
+          configMap:
+            name: mosquitto-config         # Created by deploy.sh from mosquitto/mosquitto.conf

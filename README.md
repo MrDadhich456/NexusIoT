@@ -48,7 +48,7 @@ We are building this platform layer by layer:
 - [x] **Step 7: TimescaleDB** — High-performance time-series data storage with auto-partitioned hypertables (`telemetry` for all readings, `anomaly_events` for alerts + SHAP). Connection-pooled writer with retry logic. JSONB metrics storage for zero-migration device extensibility.
 - [x] **Step 8: FastAPI + WebSocket** — Production API gateway with REST endpoints for historical telemetry/anomaly queries (TimescaleDB), real-time WebSocket streaming via Kafka fan-out consumer, SHAP anomaly explanation endpoint, Prometheus metrics, and Kubernetes-ready health checks. Interactive API docs at `/docs`.
 - [x] **Step 9: Observability** — Metrics, logging, and dashboards (Prometheus & Grafana).
-- [ ] **Step 10: Kubernetes** — Container orchestration for all services.
+- [x] **Step 10: Kubernetes** — Container orchestration for all services (Minikube-ready StatefulSets, Deployments, ConfigMaps, Secrets, Ingress, and one-command deploy script).
 - [ ] **Step 11: Terraform** — Provisioning free-tier AWS infrastructure.
 - [ ] **Step 12: CI/CD Pipeline** — Automated testing and deployment.
 
@@ -122,3 +122,48 @@ docker compose exec kafka-1 kafka-console-consumer.sh \
 | API Gateway | `nexusiot-api` | `8000` | FastAPI REST + WebSocket (docs at http://localhost:8000/docs) |
 | Prometheus | `nexusiot-prometheus` | `9090` | Metrics scraper (http://localhost:9090) |
 | Grafana | `nexusiot-grafana` | `3000` | Dashboards (http://localhost:3000) |
+
+---
+
+## ☸️ Kubernetes Deployment (Minikube)
+
+### Prerequisites
+
+- [Minikube](https://minikube.sigs.k8s.io/docs/start/) installed
+- [kubectl](https://kubernetes.io/docs/tasks/tools/) installed
+- Docker CLI installed
+
+### 1. Start Minikube
+
+```bash
+minikube start --cpus 4 --memory 8192
+minikube addons enable ingress
+```
+
+### 2. Deploy Everything
+
+```bash
+# One command deploys the entire platform
+./k8s/deploy.sh
+```
+
+### 3. Access Services
+
+```bash
+# Option A: Port-forward (no DNS setup needed)
+kubectl port-forward svc/api 8000:8000 -n nexusiot       # API: http://localhost:8000/docs
+kubectl port-forward svc/grafana 3000:3000 -n nexusiot    # Grafana: http://localhost:3000
+
+# Option B: Ingress (add to /etc/hosts)
+echo "$(minikube ip) api.nexusiot.local grafana.nexusiot.local" | sudo tee -a /etc/hosts
+# API: http://api.nexusiot.local/docs
+# Grafana: http://grafana.nexusiot.local
+```
+
+### 4. Monitor
+
+```bash
+kubectl get pods -n nexusiot                              # Check all pods
+kubectl logs -f deploy/processor -n nexusiot              # Stream processor logs
+kubectl logs -f job/device-simulators -n nexusiot          # Device simulator logs
+```

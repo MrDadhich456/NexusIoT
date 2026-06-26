@@ -1,1 +1,122 @@
-# statefulset
+# ============================================================================
+# NexusIoT — TimescaleDB StatefulSet
+# ============================================================================
+# Why StatefulSet?
+#   - Database needs a STABLE hostname for consistent connections
+#   - PersistentVolume must survive pod restarts (data durability)
+#   - StatefulSet guarantees both stable identity + persistent storage
+#
+# Init Schema:
+#   - schema.sql is mounted from ConfigMap "timescaledb-init" (created by deploy.sh)
+#   - Mounted into /docker-entrypoint-initdb.d/ which PostgreSQL auto-executes on FIRST boot
+#   - Creates hypertables: telemetry (sensor readings) + anomaly_events (alerts + SHAP)
+# ============================================================================
+
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: timescaledb
+  namespace: nexusiot
+  labels:
+    app.kubernetes.io/name: timescaledb
+    app.kubernetes.io/part-of: nexusiot
+spec:
+  serviceName: timescaledb                 # Links to the TimescaleDB service below
+  replicas: 1                              # Single-writer database (scale reads via replicas later)
+
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: timescaledb
+
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: timescaledb
+        app.kubernetes.io/part-of: nexusiot
+    spec:
+      containers:
+        - name: timescaledb
+          image: timescale/timescaledb:latest-pg16    # TimescaleDB on PostgreSQL 16
+          imagePullPolicy: IfNotPresent
+
+          ports:
+            - name: postgres
+              containerPort: 5432                      # Standard PostgreSQL port
+
+          # --- Credentials from Secret ---
+          # Pulled from nexusiot-db-secrets (k8s/secrets.yaml)
+          env:
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: nexusiot-db-secrets
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: nexusiot-db-secrets
+                  key: POSTGRES_PASSWORD
+            - name: POSTGRES_DB
+              valueFrom:
+                secretKeyRef:
+                  name: nexusiot-db-secrets
+                  key: POSTGRES_DB
+
+          # --- Volume Mounts ---
+          volumeMounts:
+            # Persistent data directory — survives pod restarts
+            - name: timescale-data
+              mountPath: /var/lib/postgresql/data
+            # Init script — auto-executed on first boot by PostgreSQL entrypoint
+            - name: init-scripts
+              mountPath: /docker-entrypoint-initdb.d/001-schema.sql
+              subPath: schema.sql                      # Mount single file (not entire dir)
+              readOnly: true
+
+          # --- Resource Limits ---
+          resources:
+            requests:
+              cpu: 250m                                # 0.25 cores guaranteed
+              memory: 512Mi                            # 512 MiB for query processing
+            limits:
+              cpu: "1"
+              memory: 2Gi                              # 2 GiB cap (shared_buffers + work_mem)
+
+          # --- Health Checks ---
+          # pg_isready is PostgreSQL's built-in connection check tool
+          readinessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - nexusiot                             # Check as the nexusiot user
+            initialDelaySeconds: 10                    # DB needs a few seconds to start
+            periodSeconds: 5
+            timeoutSeconds: 3
+
+          livenessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - nexusiot
+            initialDelaySeconds: 30                    # Longer initial delay for liveness
+            periodSeconds: 10
+            timeoutSeconds: 3
+
+      volumes:
+        - name: init-scripts
+          configMap:
+            name: timescaledb-init                     # Created by deploy.sh from schema.sql
+
+  # --- PersistentVolumeClaim ---
+  # The pod gets a dedicated 20Gi volume for database files.
+  # Named "timescale-data" → PVC name: timescale-data-timescaledb-0
+  volumeClaimTemplates:
+    - metadata:
+        name: timescale-data
+      spec:
+        accessModes: ["ReadWriteOnce"]                 # Single-writer access
+        resources:
+          requests:
+            storage: 20Gi                              # 20 GiB for time-series data

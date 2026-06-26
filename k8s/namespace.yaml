@@ -1,0 +1,34 @@
+# ============================================================================
+# NexusIoT — Kubernetes Namespace & ResourceQuota
+# ============================================================================
+# Creates an isolated namespace for all NexusIoT resources.
+# ResourceQuota prevents runaway pods from consuming the entire node.
+# ============================================================================
+
+# --- Namespace ---
+# All NexusIoT pods, services, and configs live here.
+# Keeps our resources isolated from other K8s workloads.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: nexusiot                        # Every resource below uses namespace: nexusiot
+  labels:
+    app.kubernetes.io/part-of: nexusiot # Standard K8s label for grouping related resources
+
+---
+
+# --- ResourceQuota ---
+# Hard limits on total resources the namespace can consume.
+# Prevents a single misbehaving pod (e.g., SHAP training) from starving other services.
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: nexusiot-quota
+  namespace: nexusiot
+spec:
+  hard:
+    requests.cpu: "8"               # Total CPU requests across all pods: 8 cores
+    requests.memory: 16Gi           # Total memory requests: 16 GiB
+    limits.cpu: "12"                # Total CPU limits: 12 cores (allows bursting)
+    limits.memory: 24Gi             # Total memory limits: 24 GiB
+    persistentvolumeclaims: "10"    # Max 10 PVCs (Kafka×3 + TimescaleDB + spares)

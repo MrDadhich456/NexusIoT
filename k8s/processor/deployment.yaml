@@ -1,1 +1,79 @@
-# deployment
+# ============================================================================
+# NexusIoT — Stream Processor Deployment
+# ============================================================================
+# Kafka consumer that:
+#   1. Reads raw telemetry from the "raw-telemetry" topic
+#   2. Validates data with Pydantic schemas
+#   3. Detects anomalies using sliding-window Z-score
+#   4. Explains anomalies with SHAP (IsolationForest + TreeExplainer)
+#   5. Writes to TimescaleDB (telemetry + anomaly_events tables)
+#   6. Publishes anomaly events to the "anomaly-events" topic
+#   7. Exposes Prometheus metrics on port 8001
+#
+# Single replica — Kafka consumer groups handle partitioned consumption.
+# To scale: increase replicas AND Kafka partitions together.
+# ============================================================================
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: processor
+  namespace: nexusiot
+  labels:
+    app.kubernetes.io/name: processor
+    app.kubernetes.io/part-of: nexusiot
+spec:
+  replicas: 1                              # Single consumer (matches partition count)
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: processor
+
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: processor
+        app.kubernetes.io/part-of: nexusiot
+      annotations:
+        prometheus.io/scrape: "true"       # Tell Prometheus to auto-discover this pod
+        prometheus.io/port: "8001"         # Metrics endpoint port
+    spec:
+      containers:
+        - name: processor
+          image: nexusiot/processor:latest  # Built locally via deploy.sh
+          imagePullPolicy: Never            # "Never" = use local Minikube image (no registry pull)
+
+          ports:
+            - name: metrics
+              containerPort: 8001           # Prometheus metrics endpoint
+
+          # --- Environment Variables ---
+          # Bulk-inject all keys from the shared ConfigMap
+          envFrom:
+            - configMapRef:
+                name: nexusiot-config       # KAFKA_BROKERS, INPUT_TOPIC, OUTPUT_TOPIC, etc.
+
+          # Override/add secrets individually
+          env:
+            - name: TIMESCALE_DSN
+              valueFrom:
+                secretKeyRef:
+                  name: nexusiot-db-secrets
+                  key: TIMESCALE_DSN         # Full PostgreSQL connection string
+
+          # --- Resource Limits ---
+          # SHAP model training can be CPU/memory intensive
+          resources:
+            requests:
+              cpu: 250m                     # 0.25 cores guaranteed
+              memory: 512Mi                 # 512 MiB for SHAP models in memory
+            limits:
+              cpu: "1"                      # Burst to 1 core during model training
+              memory: 1Gi                   # Hard cap — prevents OOM from killing other pods
+
+          # --- Health Check ---
+          # TCP check on the metrics port — if the metrics server is up, the process is alive
+          livenessProbe:
+            tcpSocket:
+              port: 8001
+            initialDelaySeconds: 30         # Kafka consumer needs time to join the group
+            periodSeconds: 15

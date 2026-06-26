@@ -1,0 +1,58 @@
+# ============================================================================
+# NexusIoT — Ingress Rules
+# ============================================================================
+# Routes external HTTP traffic to internal ClusterIP services.
+# Requires the NGINX Ingress Controller:
+#   minikube addons enable ingress
+#
+# After deployment, add these to /etc/hosts:
+#   $(minikube ip)  api.nexusiot.local grafana.nexusiot.local
+#
+# Then access:
+#   http://api.nexusiot.local      → FastAPI docs (/docs)
+#   http://grafana.nexusiot.local  → Grafana dashboards
+# ============================================================================
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: nexusiot-ingress
+  namespace: nexusiot
+  labels:
+    app.kubernetes.io/part-of: nexusiot
+  annotations:
+    # Enable WebSocket support for the API gateway's live streaming
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-http-version: "1.1"
+    # Enable WebSocket upgrade (NGINX ingress handles Upgrade headers natively)
+    nginx.ingress.kubernetes.io/websocket-services: "api"
+spec:
+  ingressClassName: nginx                  # Minikube's built-in NGINX ingress controller
+
+  rules:
+    # --- API Gateway ---
+    # http://api.nexusiot.local → api Service port 8000
+    - host: api.nexusiot.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: api                  # The API ClusterIP service
+                port:
+                  number: 8000
+
+    # --- Grafana Dashboards ---
+    # http://grafana.nexusiot.local → grafana Service port 3000
+    - host: grafana.nexusiot.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: grafana              # The Grafana ClusterIP service
+                port:
+                  number: 3000

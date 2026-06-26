@@ -1,1 +1,88 @@
-# deployment
+# ============================================================================
+# NexusIoT — API Gateway Deployment
+# ============================================================================
+# FastAPI application that provides:
+#   - REST endpoints for historical telemetry/anomaly queries (TimescaleDB)
+#   - WebSocket streaming of live Kafka events to browser clients
+#   - SHAP anomaly explanation endpoint
+#   - Prometheus metrics on /metrics
+#   - Health check on /health (used by K8s probes)
+#
+# 2 replicas for high availability — if one pod dies, the other serves traffic.
+# ============================================================================
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+  namespace: nexusiot
+  labels:
+    app.kubernetes.io/name: api
+    app.kubernetes.io/part-of: nexusiot
+spec:
+  replicas: 2                              # 2 replicas for HA — K8s Service load-balances between them
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: api
+
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: api
+        app.kubernetes.io/part-of: nexusiot
+      annotations:
+        prometheus.io/scrape: "true"       # Auto-discovered by Prometheus
+        prometheus.io/port: "8000"
+    spec:
+      containers:
+        - name: api
+          image: nexusiot/api:latest        # Built locally via deploy.sh
+          imagePullPolicy: Never            # Use Minikube's local Docker image
+
+          ports:
+            - name: http
+              containerPort: 8000           # FastAPI HTTP + WebSocket port
+
+          # --- Environment Variables ---
+          envFrom:
+            - configMapRef:
+                name: nexusiot-config       # KAFKA_BROKERS, INPUT_TOPIC, OUTPUT_TOPIC
+
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: nexusiot-db-secrets
+                  key: DATABASE_URL          # PostgreSQL connection string
+
+          # --- Resource Limits ---
+          resources:
+            requests:
+              cpu: 100m                     # Lightweight — mostly I/O bound (DB queries, WS fan-out)
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+
+          # --- Readiness Probe ---
+          # K8s only sends traffic to this pod AFTER it passes the readiness check.
+          # Prevents routing requests to a pod that's still starting up.
+          readinessProbe:
+            httpGet:
+              path: /health                  # FastAPI health endpoint
+              port: 8000
+            initialDelaySeconds: 10          # Wait for uvicorn to start
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3              # 3 consecutive failures = mark unready
+
+          # --- Liveness Probe ---
+          # If the process hangs (e.g., deadlocked WebSocket), K8s restarts the pod.
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 5              # 5 failures before restart (avoid flapping)

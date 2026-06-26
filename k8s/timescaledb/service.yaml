@@ -1,1 +1,24 @@
-# service
+# ============================================================================
+# NexusIoT — TimescaleDB Service
+# ============================================================================
+# ClusterIP service exposes PostgreSQL on port 5432 inside the cluster.
+# DNS name: timescaledb.nexusiot.svc.cluster.local
+# Used by: Processor (writes telemetry + anomalies), API (reads for REST queries)
+# ============================================================================
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: timescaledb
+  namespace: nexusiot
+  labels:
+    app.kubernetes.io/name: timescaledb
+    app.kubernetes.io/part-of: nexusiot
+spec:
+  type: ClusterIP                          # Internal only
+  selector:
+    app.kubernetes.io/name: timescaledb    # Routes to the TimescaleDB StatefulSet pod
+  ports:
+    - name: postgres
+      port: 5432                           # Standard PostgreSQL port
+      targetPort: 5432

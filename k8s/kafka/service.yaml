@@ -1,1 +1,59 @@
-# service
+# ============================================================================
+# NexusIoT — Kafka Services
+# ============================================================================
+# Two services are needed for a Kafka StatefulSet:
+#
+# 1. Headless Service (clusterIP: None)
+#    - Gives each pod a stable DNS name:
+#      kafka-0.kafka-headless.nexusiot.svc.cluster.local
+#    - Required for StatefulSet pod identity
+#    - Brokers use these FQDNs to communicate with each other
+#
+# 2. Client Service (clusterIP: auto)
+#    - Load-balances traffic across all Kafka brokers
+#    - Used by Bridge, Processor, API to bootstrap their Kafka connections
+#    - Clients discover all brokers after connecting to any one
+# ============================================================================
+
+# --- Headless Service (pod-to-pod DNS) ---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kafka-headless                  # StatefulSet references this name
+  namespace: nexusiot
+  labels:
+    app.kubernetes.io/name: kafka
+    app.kubernetes.io/part-of: nexusiot
+spec:
+  clusterIP: None                       # "None" = headless → no load balancing, direct pod DNS
+  publishNotReadyAddresses: true        # DNS entries exist even before pods are ready
+                                        # (needed: Kafka brokers must find each other during startup)
+  selector:
+    app.kubernetes.io/name: kafka       # Matches pods from the Kafka StatefulSet
+  ports:
+    - name: plaintext                   # Inter-broker and client communication
+      port: 9092
+      targetPort: 9092
+    - name: controller                  # KRaft controller election (internal only)
+      port: 9093
+      targetPort: 9093
+
+---
+
+# --- Client Service (load-balanced bootstrap) ---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kafka                           # Short DNS name for clients: kafka.nexusiot.svc.cluster.local
+  namespace: nexusiot
+  labels:
+    app.kubernetes.io/name: kafka
+    app.kubernetes.io/part-of: nexusiot
+spec:
+  type: ClusterIP                       # Internal only — no external access needed
+  selector:
+    app.kubernetes.io/name: kafka
+  ports:
+    - name: plaintext
+      port: 9092
+      targetPort: 9092

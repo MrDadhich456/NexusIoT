@@ -1,1 +1,121 @@
-# prometheus
+# ============================================================================
+# NexusIoT — Prometheus Deployment + ConfigMap + Service
+# ============================================================================
+# Prometheus scrapes metrics from:
+#   - Itself (localhost:9090)
+#   - Stream Processor (processor:8001)
+#   - API Gateway (api:8000)
+#
+# Config is embedded as a ConfigMap (small file — no need for deploy.sh).
+# In K8s, we use Service DNS names instead of Docker container names.
+# ============================================================================
+
+# --- Prometheus Configuration ConfigMap ---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-server-config
+  namespace: nexusiot
+  labels:
+    app.kubernetes.io/name: prometheus
+    app.kubernetes.io/part-of: nexusiot
+data:
+  # prometheus.yml — identical logic to the Docker Compose version,
+  # but targets use Kubernetes Service DNS names instead of container names.
+  prometheus.yml: |
+    global:
+      scrape_interval: 5s
+      evaluation_interval: 5s
+
+    scrape_configs:
+      - job_name: "prometheus"
+        static_configs:
+          - targets: ["localhost:9090"]
+
+      - job_name: "nexusiot-processor"
+        static_configs:
+          # K8s Service DNS: <service-name>.<namespace>.svc.cluster.local
+          - targets: ["processor.nexusiot.svc.cluster.local:8001"]
+
+      - job_name: "nexusiot-api"
+        static_configs:
+          - targets: ["api.nexusiot.svc.cluster.local:8000"]
+
+---
+
+# --- Prometheus Deployment ---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prometheus
+  namespace: nexusiot
+  labels:
+    app.kubernetes.io/name: prometheus
+    app.kubernetes.io/part-of: nexusiot
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: prometheus
+
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: prometheus
+        app.kubernetes.io/part-of: nexusiot
+    spec:
+      containers:
+        - name: prometheus
+          image: prom/prometheus:latest
+          imagePullPolicy: IfNotPresent
+
+          ports:
+            - name: http
+              containerPort: 9090
+
+          # Mount the prometheus.yml config file
+          volumeMounts:
+            - name: config
+              mountPath: /etc/prometheus/prometheus.yml
+              subPath: prometheus.yml
+              readOnly: true
+
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+
+          readinessProbe:
+            httpGet:
+              path: /-/ready
+              port: 9090
+            initialDelaySeconds: 10
+            periodSeconds: 5
+
+      volumes:
+        - name: config
+          configMap:
+            name: prometheus-server-config
+
+---
+
+# --- Prometheus Service ---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus
+  namespace: nexusiot
+  labels:
+    app.kubernetes.io/name: prometheus
+    app.kubernetes.io/part-of: nexusiot
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: prometheus
+  ports:
+    - name: http
+      port: 9090
+      targetPort: 9090

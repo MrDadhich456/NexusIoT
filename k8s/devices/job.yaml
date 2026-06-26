@@ -1,1 +1,52 @@
-# job
+# ============================================================================
+# NexusIoT — Device Simulator Job
+# ============================================================================
+# Runs all 3 device simulators (CNC, Robotic Arm, Conveyor Belt) as a
+# Kubernetes Job. The simulators publish MQTT telemetry to the Mosquitto
+# service, feeding the entire data pipeline.
+#
+# Why Job instead of Deployment?
+#   - Simulators are "fire and run" — they continuously publish until stopped
+#   - A Job with restartPolicy: Never means "run once, keep running"
+#   - For periodic bursts, you could convert this to a CronJob
+# ============================================================================
+
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: device-simulators
+  namespace: nexusiot
+  labels:
+    app.kubernetes.io/name: device-simulators
+    app.kubernetes.io/part-of: nexusiot
+spec:
+  # Don't auto-clean — keep the pod around for log inspection
+  ttlSecondsAfterFinished: 3600           # Auto-delete 1 hour after completion
+  backoffLimit: 3                          # Retry up to 3 times on failure
+
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: device-simulators
+        app.kubernetes.io/part-of: nexusiot
+    spec:
+      restartPolicy: OnFailure             # Restart on crash, but not on success
+
+      containers:
+        - name: simulators
+          image: nexusiot/devices:latest    # Built from Dockerfile.devices by deploy.sh
+          imagePullPolicy: Never            # Use Minikube's local Docker image
+
+          # --- MQTT Broker Connection ---
+          # The k8s_runner.py reads these env vars to connect to Mosquitto
+          envFrom:
+            - configMapRef:
+                name: nexusiot-config       # MQTT_BROKER, MQTT_PORT
+
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
