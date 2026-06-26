@@ -1,0 +1,44 @@
+# ============================================================================
+# NexusIoT — Shared ConfigMap
+# ============================================================================
+# Centralizes all non-secret configuration used by multiple microservices.
+# Each service references this ConfigMap via envFrom or env/valueFrom,
+# so changing a value here propagates to all consumers on next rollout.
+# ============================================================================
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nexusiot-config
+  namespace: nexusiot
+  labels:
+    app.kubernetes.io/part-of: nexusiot
+data:
+  # ── Kafka Broker Addresses ──
+  # In Kubernetes, StatefulSet pods get stable DNS names:
+  #   <pod-name>.<headless-service>.<namespace>.svc.cluster.local
+  # Our Kafka StatefulSet creates pods kafka-0, kafka-1, kafka-2
+  # behind the headless service "kafka-headless".
+  KAFKA_BROKERS: "kafka-0.kafka-headless.nexusiot.svc.cluster.local:9092,kafka-1.kafka-headless.nexusiot.svc.cluster.local:9092,kafka-2.kafka-headless.nexusiot.svc.cluster.local:9092"
+
+  # ── Kafka Topic Names ──
+  # INPUT_TOPIC: raw sensor data from the MQTT bridge
+  # OUTPUT_TOPIC: anomaly events produced by the stream processor
+  KAFKA_TOPIC: "raw-telemetry"
+  INPUT_TOPIC: "raw-telemetry"
+  OUTPUT_TOPIC: "anomaly-events"
+
+  # ── Consumer Group ──
+  # Kafka consumer group ID for the stream processor.
+  # All processor replicas share this group for load-balanced consumption.
+  CONSUMER_GROUP: "stream-processor"
+
+  # ── Prometheus Metrics ──
+  # Port where the stream processor exposes its /metrics endpoint.
+  METRICS_PORT: "8001"
+
+  # ── MQTT Broker ──
+  # Kubernetes Service DNS name for the Mosquitto broker.
+  # Device simulators and the bridge connect here.
+  MQTT_BROKER: "mosquitto.nexusiot.svc.cluster.local"
+  MQTT_PORT: "1883"

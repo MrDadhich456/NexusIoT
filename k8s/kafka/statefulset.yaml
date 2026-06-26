@@ -1,1 +1,159 @@
-# statefulset
+# ============================================================================
+# NexusIoT — Kafka StatefulSet (3-broker KRaft cluster)
+# ============================================================================
+# Why StatefulSet instead of Deployment?
+#   - Each Kafka broker needs a STABLE hostname (kafka-0, kafka-1, kafka-2)
+#   - Each broker needs its OWN persistent volume (not shared)
+#   - StatefulSet guarantees both: ordered pod identity + per-pod PVCs
+#
+# KRaft Mode:
+#   - No ZooKeeper dependency (Kafka 3.3+ feature)
+#   - Each broker acts as BOTH broker AND controller
+#   - Controller quorum is formed by all 3 nodes
+# ============================================================================
+
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: kafka
+  namespace: nexusiot
+  labels:
+    app.kubernetes.io/name: kafka
+    app.kubernetes.io/part-of: nexusiot
+spec:
+  serviceName: kafka-headless           # Links to the headless service for pod DNS
+  replicas: 3                           # 3 brokers = production-grade replication
+  podManagementPolicy: Parallel         # Start all 3 brokers simultaneously (faster startup)
+
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: kafka     # Must match template labels below
+
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: kafka
+        app.kubernetes.io/part-of: nexusiot
+    spec:
+      # --- Pod Anti-Affinity ---
+      # Prefer spreading brokers across different nodes.
+      # "preferredDuringScheduling" = soft rule (works on single-node Minikube too).
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app.kubernetes.io/name: kafka
+                topologyKey: kubernetes.io/hostname   # One broker per node (when possible)
+
+      containers:
+        - name: kafka
+          image: apache/kafka:latest
+          imagePullPolicy: IfNotPresent               # Use cached image if available
+
+          ports:
+            - name: plaintext
+              containerPort: 9092                     # Client + inter-broker traffic
+            - name: controller
+              containerPort: 9093                     # KRaft controller election
+
+          # --- Environment Variables ---
+          # Static config shared by all 3 brokers.
+          # Dynamic config (NODE_ID, ADVERTISED_LISTENERS) is set via the command below.
+          env:
+            - name: KAFKA_PROCESS_ROLES
+              value: "broker,controller"              # Dual role: serves data AND participates in elections
+
+            - name: KAFKA_CONTROLLER_QUORUM_VOTERS
+              # All 3 brokers vote in controller elections.
+              # Format: nodeId@hostname:controllerPort
+              # Node IDs are ordinal+1: kafka-0→1, kafka-1→2, kafka-2→3
+              value: "1@kafka-0.kafka-headless.nexusiot.svc.cluster.local:9093,2@kafka-1.kafka-headless.nexusiot.svc.cluster.local:9093,3@kafka-2.kafka-headless.nexusiot.svc.cluster.local:9093"
+
+            - name: KAFKA_LISTENERS
+              # PLAINTEXT: client + inter-broker traffic (port 9092)
+              # CONTROLLER: KRaft election traffic (port 9093)
+              value: "PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093"
+
+            - name: KAFKA_LISTENER_SECURITY_PROTOCOL_MAP
+              value: "PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT"
+
+            - name: KAFKA_CONTROLLER_LISTENER_NAMES
+              value: "CONTROLLER"                     # Which listener handles controller traffic
+
+            - name: KAFKA_INTER_BROKER_LISTENER_NAME
+              value: "PLAINTEXT"                      # Which listener handles broker-to-broker traffic
+
+            - name: CLUSTER_ID
+              value: "NexusIoT-Kafka-Cluster-01"      # Must be identical across all brokers
+
+            - name: KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR
+              value: "3"                              # Consumer offsets replicated across all 3 brokers
+
+            - name: KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR
+              value: "3"
+
+            - name: KAFKA_TRANSACTION_STATE_LOG_MIN_ISR
+              value: "2"                              # Min in-sync replicas for transactions
+
+          # --- Dynamic Configuration ---
+          # The NODE_ID and ADVERTISED_LISTENERS must be unique per broker.
+          # We extract the ordinal from the pod hostname (kafka-0 → 0)
+          # and compute the values dynamically.
+          command:
+            - bash
+            - -c
+            - |
+              # Extract ordinal index from hostname: "kafka-0" → "0"
+              ORDINAL=${HOSTNAME##*-}
+              # Kafka NODE_IDs are 1-indexed (matching CONTROLLER_QUORUM_VOTERS above)
+              export KAFKA_NODE_ID=$((ORDINAL + 1))
+              # Advertise the pod's stable FQDN so other brokers and clients can reach it
+              export KAFKA_ADVERTISED_LISTENERS="PLAINTEXT://${HOSTNAME}.kafka-headless.nexusiot.svc.cluster.local:9092"
+              # Launch Kafka using the official image's entrypoint
+              exec /etc/kafka/docker/run
+
+          # --- Resource Limits ---
+          resources:
+            requests:
+              cpu: 250m                               # 0.25 CPU cores guaranteed
+              memory: 512Mi                           # 512 MiB guaranteed
+            limits:
+              cpu: "1"                                # Can burst to 1 full core
+              memory: 1Gi                             # Hard cap at 1 GiB
+
+          # --- Health Checks ---
+          # Readiness: is this broker accepting client connections?
+          readinessProbe:
+            tcpSocket:
+              port: 9092                              # Can clients connect?
+            initialDelaySeconds: 30                   # Kafka needs time to form the quorum
+            periodSeconds: 10
+            timeoutSeconds: 5
+
+          # Liveness: is the process still alive?
+          livenessProbe:
+            tcpSocket:
+              port: 9092
+            initialDelaySeconds: 60                   # Longer delay — don't kill during slow starts
+            periodSeconds: 20
+            timeoutSeconds: 5
+
+          # --- Volume Mount ---
+          volumeMounts:
+            - name: kafka-data
+              mountPath: /var/lib/kafka/data           # Kafka log segments persist here
+
+  # --- PersistentVolumeClaim Template ---
+  # Each of the 3 pods gets its OWN 10Gi volume (kafka-data-kafka-0, kafka-data-kafka-1, etc.)
+  # Data survives pod restarts and rescheduling.
+  volumeClaimTemplates:
+    - metadata:
+        name: kafka-data
+      spec:
+        accessModes: ["ReadWriteOnce"]                 # Only one pod mounts this volume
+        resources:
+          requests:
+            storage: 10Gi                              # 10 GiB per broker for log segments

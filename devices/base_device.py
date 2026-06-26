@@ -1,9 +1,13 @@
 import paho.mqtt.client as mqtt
-import json, time, random, logging
+import json, time, random, logging, os
 
 class BaseDevice:
     def __init__(self, device_id: str, device_type: str,
-                 broker: str = "localhost", port: int = 1883):
+                 broker: str = None, port: int = None):
+        # Read MQTT broker from environment variables (set by K8s ConfigMap)
+        # Falls back to localhost:1883 for local development
+        broker = broker or os.getenv("MQTT_BROKER", "localhost")
+        port = port or int(os.getenv("MQTT_PORT", "1883"))
         self.device_id = device_id
         self.device_type = device_type
         self.topic = f"sensors/{device_id}/data"

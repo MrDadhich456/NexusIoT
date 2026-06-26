@@ -1,1 +1,24 @@
-# service
+# ============================================================================
+# NexusIoT — Mosquitto Service
+# ============================================================================
+# ClusterIP service exposes Mosquitto on port 1883 inside the cluster.
+# DNS name: mosquitto.nexusiot.svc.cluster.local
+# Used by: Bridge (subscribes to MQTT), Device simulators (publish to MQTT)
+# ============================================================================
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: mosquitto
+  namespace: nexusiot
+  labels:
+    app.kubernetes.io/name: mosquitto
+    app.kubernetes.io/part-of: nexusiot
+spec:
+  type: ClusterIP                         # Internal only — devices connect from inside the cluster
+  selector:
+    app.kubernetes.io/name: mosquitto     # Routes to the Mosquitto Deployment pod
+  ports:
+    - name: mqtt
+      port: 1883                          # Service port (what clients connect to)
+      targetPort: 1883                    # Container port (where Mosquitto listens)

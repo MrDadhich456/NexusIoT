@@ -1,1 +1,118 @@
-# grafana
+# ============================================================================
+# NexusIoT — Grafana Deployment + Service
+# ============================================================================
+# Grafana is auto-provisioned with:
+#   - Prometheus datasource (from ConfigMap "grafana-datasources")
+#   - Dashboard provider config (from ConfigMap "grafana-dashboard-provider")
+#   - NexusIoT dashboard JSON (from ConfigMap "grafana-dashboards")
+#
+# All 3 ConfigMaps are created by deploy.sh from the existing grafana/ directory.
+# Anonymous viewer access enabled for easy demo access.
+# ============================================================================
+
+# --- Grafana Deployment ---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana
+  namespace: nexusiot
+  labels:
+    app.kubernetes.io/name: grafana
+    app.kubernetes.io/part-of: nexusiot
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: grafana
+
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: grafana
+        app.kubernetes.io/part-of: nexusiot
+    spec:
+      containers:
+        - name: grafana
+          image: grafana/grafana:latest
+          imagePullPolicy: IfNotPresent
+
+          ports:
+            - name: http
+              containerPort: 3000              # Grafana web UI port
+
+          # --- Grafana Environment Variables ---
+          env:
+            - name: GF_SECURITY_ADMIN_PASSWORD
+              value: "admin"                   # Default admin password
+            - name: GF_AUTH_ANONYMOUS_ENABLED
+              value: "true"                    # Allow unauthenticated viewing
+            - name: GF_AUTH_ANONYMOUS_ORG_ROLE
+              value: "Viewer"                  # Anonymous users are read-only
+            # Override the dashboard provider path to match our mount
+            - name: GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH
+              value: "/etc/grafana/dashboards/nexusiot.json"
+
+          # --- Volume Mounts ---
+          # Each volume mounts one Grafana provisioning layer
+          volumeMounts:
+            # Datasource provisioning (Prometheus URL)
+            - name: datasources
+              mountPath: /etc/grafana/provisioning/datasources/prometheus.yml
+              subPath: prometheus.yml
+              readOnly: true
+            # Dashboard provider config (tells Grafana where to find dashboard JSON files)
+            - name: dashboard-provider
+              mountPath: /etc/grafana/provisioning/dashboards/dashboards.yml
+              subPath: dashboards.yml
+              readOnly: true
+            # Actual dashboard JSON files
+            - name: dashboards
+              mountPath: /etc/grafana/dashboards
+              readOnly: true
+
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: 3000
+            initialDelaySeconds: 15
+            periodSeconds: 10
+
+      volumes:
+        # ConfigMaps created by deploy.sh from grafana/ directory files
+        - name: datasources
+          configMap:
+            name: grafana-datasources         # from grafana/provisioning/datasources/prometheus.yml
+        - name: dashboard-provider
+          configMap:
+            name: grafana-dashboard-provider   # from grafana/provisioning/dashboards/dashboards.yml
+        - name: dashboards
+          configMap:
+            name: grafana-dashboards           # from grafana/dashboards/nexusiot.json
+
+---
+
+# --- Grafana Service ---
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana
+  namespace: nexusiot
+  labels:
+    app.kubernetes.io/name: grafana
+    app.kubernetes.io/part-of: nexusiot
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: grafana
+  ports:
+    - name: http
+      port: 3000
+      targetPort: 3000

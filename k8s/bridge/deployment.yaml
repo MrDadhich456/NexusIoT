@@ -1,0 +1,46 @@
+# ============================================================================
+# NexusIoT — MQTT-Kafka Bridge Deployment
+# ============================================================================
+# Subscribes to all MQTT topics on Mosquitto and forwards every message
+# into the Kafka "raw-telemetry" topic with device-level partitioning.
+# Single replica — one bridge instance handles all MQTT traffic.
+# ============================================================================
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bridge
+  namespace: nexusiot
+  labels:
+    app.kubernetes.io/name: bridge
+    app.kubernetes.io/part-of: nexusiot
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: bridge
+
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: bridge
+        app.kubernetes.io/part-of: nexusiot
+    spec:
+      containers:
+        - name: bridge
+          image: nexusiot/bridge:latest     # Built locally via deploy.sh
+          imagePullPolicy: Never            # Use Minikube's local Docker image
+
+          # --- Environment Variables ---
+          envFrom:
+            - configMapRef:
+                name: nexusiot-config       # MQTT_BROKER, MQTT_PORT, KAFKA_BROKERS, KAFKA_TOPIC
+
+          # --- Resource Limits ---
+          resources:
+            requests:
+              cpu: 50m                      # Lightweight — just message forwarding
+              memory: 128Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
