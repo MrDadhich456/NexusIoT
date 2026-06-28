@@ -49,7 +49,7 @@ We are building this platform layer by layer:
 - [x] **Step 8: FastAPI + WebSocket** — Production API gateway with REST endpoints for historical telemetry/anomaly queries (TimescaleDB), real-time WebSocket streaming via Kafka fan-out consumer, SHAP anomaly explanation endpoint, Prometheus metrics, and Kubernetes-ready health checks. Interactive API docs at `/docs`.
 - [x] **Step 9: Observability** — Metrics, logging, and dashboards (Prometheus & Grafana).
 - [x] **Step 10: Kubernetes** — Container orchestration for all services (Minikube-ready StatefulSets, Deployments, ConfigMaps, Secrets, Ingress, and one-command deploy script).
-- [ ] **Step 11: Terraform** — Provisioning free-tier AWS infrastructure.
+- [x] **Step 11: Terraform** — Provisioning free-tier AWS infrastructure.
 - [ ] **Step 12: CI/CD Pipeline** — Automated testing and deployment.
 
 ---
