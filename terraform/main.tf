@@ -161,6 +161,12 @@ resource "aws_instance" "nexusiot_server" {
 
   vpc_security_group_ids = [aws_security_group.nexusiot_sg.id]
 
+  root_block_device {
+    volume_size           = 25
+    volume_type           = "gp3"
+    delete_on_termination = true
+  }
+
   # User data script to configure swap memory, Docker, and Kubernetes tools
   user_data = <<-EOF
               #!/bin/bash
@@ -194,5 +200,15 @@ resource "aws_instance" "nexusiot_server" {
 
   tags = {
     Name = "NexusIoT-Server"
+  }
+}
+
+# 9. Elastic IP (EIP) for a persistent static public IP
+resource "aws_eip" "nexusiot_eip" {
+  instance = aws_instance.nexusiot_server.id
+  domain   = "vpc"
+
+  tags = {
+    Name = "nexusiot-eip"
   }
 }

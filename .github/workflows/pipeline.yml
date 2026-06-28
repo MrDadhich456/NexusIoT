@@ -1,1 +1,162 @@
-# pipeline
+name: NexusIoT CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  python-ci:
+    name: Python Lint & Test
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: "pip"
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          pip install ruff pytest
+
+      - name: Lint and Format Check (Ruff)
+        run: |
+          ruff check .
+          ruff format --check .
+
+      - name: Run Tests
+        run: |
+          pytest
+
+  terraform-ci:
+    name: Terraform Format & Validate
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - name: Terraform Format Check
+        run: terraform fmt -check -recursive terraform/
+
+      - name: Terraform Init (Validation Mode)
+        run: terraform -chdir=terraform init -backend=false
+
+      - name: Terraform Validate
+        run: terraform -chdir=terraform validate
+
+  docker-build-check:
+    name: Docker Build Verification
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Bridge Image
+        run: |
+          docker build -t nexusiot/bridge:test -f Dockerfile.bridge .
+
+      - name: Build Processor Image
+        run: |
+          docker build -t nexusiot/processor:test -f Dockerfile.processor .
+
+      - name: Build API Image
+        run: |
+          docker build -t nexusiot/api:test -f Dockerfile.api .
+
+      - name: Build Devices Image
+        run: |
+          docker build -t nexusiot/devices:test -f Dockerfile.devices .
+
+  deploy:
+    name: CD: Deploy to AWS EC2
+    needs: [python-ci, terraform-ci, docker-build-check]
+    runs-on: ubuntu-24.04
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USERNAME || 'ubuntu' }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          port: 22
+          script_stop: true
+          script: |
+            echo "🚀 Starting Deployment Process on EC2 Instance..."
+            
+            # 1. Ensure Repository Directory Exists and is Setup
+            if [ ! -d "/home/ubuntu/NexusIoT" ]; then
+              echo "📂 Repository not found. Cloning NexusIoT..."
+              git clone https://github.com/${{ github.repository }}.git /home/ubuntu/NexusIoT
+            fi
+            
+            cd /home/ubuntu/NexusIoT
+            
+            # 2. Fetch Latest Changes
+            echo "📥 Fetching latest code from GitHub..."
+            git fetch --all
+            git checkout ${{ github.ref_name }}
+            git pull origin ${{ github.ref_name }}
+            
+            # 3. Ensure Minikube is Running
+            echo "☸️ Checking Minikube status..."
+            if ! minikube status; then
+              echo "🔄 Starting Minikube..."
+              minikube start --cpus 4 --memory 8192 --driver=docker
+            fi
+            
+            # 4. Ensure Ingress Addon is Enabled
+            echo "🌐 Checking Ingress addon..."
+            if ! minikube addons list | grep -q "ingress.*enabled"; then
+              echo "🔌 Enabling Ingress addon..."
+              minikube addons enable ingress
+            fi
+            
+            # 5. Run Deployment Script
+            echo "🏗️ Running k8s deployment script..."
+            chmod +x k8s/deploy.sh
+            ./k8s/deploy.sh
+            
+            # 6. Post-Deployment Verification Health Check
+            echo "🔍 Verifying Ingress Routing Health..."
+            API_HEALTH_URL="http://\$(minikube ip)/docs"
+            
+            # Retry curl up to 12 times to allow pod and ingress startup/warmup (2 minutes max)
+            SUCCESS=false
+            for i in {1..12}; do
+              echo "   Attempt \$i: Curling API at \$API_HEALTH_URL (Host: api.nexusiot.local)..."
+              if curl -sf -H "Host: api.nexusiot.local" "\$API_HEALTH_URL" > /dev/null; then
+                echo "✅ Health check passed! API Ingress is responding."
+                SUCCESS=true
+                break
+              fi
+              echo "   ⚠️ API not ready yet. Retrying in 10 seconds..."
+              sleep 10
+            done
+            
+            if [ "\$SUCCESS" = "false" ]; then
+              echo "❌ Health check failed. API is not responding after 2 minutes."
+              exit 1
+            fi
+            
+            echo "🎉 Deployment successfully completed and verified!"
