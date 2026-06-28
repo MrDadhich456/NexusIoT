@@ -167,3 +167,20 @@ kubectl get pods -n nexusiot                              # Check all pods
 kubectl logs -f deploy/processor -n nexusiot              # Stream processor logs
 kubectl logs -f job/device-simulators -n nexusiot          # Device simulator logs
 ```
+
+---
+
+## 🐳 Docker Compose Alternative (Low-Memory Host)
+
+If you are running on a low-memory server (e.g., an AWS `t2.micro` or `t3.micro` instance with less than 2GB of RAM), running Kubernetes/Minikube will fail due to resource constraints. 
+
+In such environments, you can run the entire stack using Docker Compose, which is much lighter:
+
+```bash
+# Build and start all services (uses host swap memory)
+docker compose up -d
+
+# Verify all services are running
+docker compose ps
+```
+
