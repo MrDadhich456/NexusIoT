@@ -31,7 +31,7 @@ import sys
 import signal
 import logging
 
-from confluent_kafka import Consumer, Producer, KafkaError, KafkaException
+from confluent_kafka import Consumer, Producer, KafkaError
 from confluent_kafka.admin import AdminClient, NewTopic
 from prometheus_client import Counter, Gauge, start_http_server
 
@@ -51,13 +51,14 @@ log = structlog.get_logger()
 # ─── Configuration (12-Factor: env vars) ─────────────────────────────
 # All config comes from environment variables so the SAME code runs
 # in dev, staging, and production — only the env vars change.
-KAFKA_BROKERS  = os.getenv("KAFKA_BROKERS", "localhost:19094")
-INPUT_TOPIC    = os.getenv("INPUT_TOPIC", "raw-telemetry")
-OUTPUT_TOPIC   = os.getenv("OUTPUT_TOPIC", "anomaly-events")
+KAFKA_BROKERS = os.getenv("KAFKA_BROKERS", "localhost:19094")
+INPUT_TOPIC = os.getenv("INPUT_TOPIC", "raw-telemetry")
+OUTPUT_TOPIC = os.getenv("OUTPUT_TOPIC", "anomaly-events")
 CONSUMER_GROUP = os.getenv("CONSUMER_GROUP", "stream-processor")
-METRICS_PORT   = int(os.getenv("METRICS_PORT", "8001"))
-TIMESCALE_DSN  = os.getenv("TIMESCALE_DSN",
-                           "postgresql://nexusiot:nexusiot@localhost:5432/nexusiot")
+METRICS_PORT = int(os.getenv("METRICS_PORT", "8001"))
+TIMESCALE_DSN = os.getenv(
+    "TIMESCALE_DSN", "postgresql://nexusiot:nexusiot@localhost:5432/nexusiot"
+)
 
 
 # ─── Prometheus Metrics ──────────────────────────────────────────────
@@ -66,7 +67,7 @@ TIMESCALE_DSN  = os.getenv("TIMESCALE_DSN",
 messages_processed = Counter(
     "processor_messages_total",
     "Total messages consumed from Kafka",
-    ["device_type", "status"],   # status: "valid", "invalid", "error"
+    ["device_type", "status"],  # status: "valid", "invalid", "error"
 )
 
 anomalies_detected = Counter(
@@ -100,7 +101,7 @@ shap_model_not_ready = Counter(
 db_writes = Counter(
     "processor_db_writes_total",
     "Total successful database writes",
-    ["table"],    # table: "telemetry" or "anomaly_events"
+    ["table"],  # table: "telemetry" or "anomaly_events"
 )
 
 db_errors = Counter(
@@ -111,9 +112,12 @@ db_errors = Counter(
 
 
 # ─── Kafka Topic Bootstrap ──────────────────────────────────────────
-def ensure_topic_exists(bootstrap_servers: str, topic: str,
-                        num_partitions: int = 6,
-                        replication_factor: int = 3):
+def ensure_topic_exists(
+    bootstrap_servers: str,
+    topic: str,
+    num_partitions: int = 6,
+    replication_factor: int = 3,
+):
     """
     Create a Kafka topic if it doesn't already exist.
 
@@ -137,42 +141,47 @@ def ensure_topic_exists(bootstrap_servers: str, topic: str,
     futures = admin.create_topics([new_topic])
     for topic_name, future in futures.items():
         future.result()
-        log.info("topic_created", topic=topic_name,
-                 partitions=num_partitions, replication=replication_factor)
+        log.info(
+            "topic_created",
+            topic=topic_name,
+            partitions=num_partitions,
+            replication=replication_factor,
+        )
 
 
 # ─── Kafka Consumer ─────────────────────────────────────────────────
-consumer = Consumer({
-    "bootstrap.servers": KAFKA_BROKERS,
-
-    # Consumer group: Kafka tracks which messages each group has processed.
-    # If we run 3 instances with the same group.id, Kafka splits 6 partitions
-    # across them (2 each) — automatic horizontal scaling.
-    "group.id": CONSUMER_GROUP,
-
-    # Where to start if this consumer group has never consumed before:
-    # "earliest" = read from the very beginning of the topic
-    # "latest"   = only read new messages (would miss historical data)
-    "auto.offset.reset": "earliest",
-
-    # CRITICAL: We commit offsets MANUALLY after processing each message.
-    # Auto-commit says "I processed this" on a timer, even if we crashed
-    # mid-processing. Manual commit = we only acknowledge AFTER validation
-    # and anomaly detection are complete.
-    "enable.auto.commit": False,
-})
+consumer = Consumer(
+    {
+        "bootstrap.servers": KAFKA_BROKERS,
+        # Consumer group: Kafka tracks which messages each group has processed.
+        # If we run 3 instances with the same group.id, Kafka splits 6 partitions
+        # across them (2 each) — automatic horizontal scaling.
+        "group.id": CONSUMER_GROUP,
+        # Where to start if this consumer group has never consumed before:
+        # "earliest" = read from the very beginning of the topic
+        # "latest"   = only read new messages (would miss historical data)
+        "auto.offset.reset": "earliest",
+        # CRITICAL: We commit offsets MANUALLY after processing each message.
+        # Auto-commit says "I processed this" on a timer, even if we crashed
+        # mid-processing. Manual commit = we only acknowledge AFTER validation
+        # and anomaly detection are complete.
+        "enable.auto.commit": False,
+    }
+)
 
 
 # ─── Kafka Producer (for anomaly events) ────────────────────────────
 # Same reliability settings as the bridge: acks=all + idempotent.
-producer = Producer({
-    "bootstrap.servers": KAFKA_BROKERS,
-    "client.id": "stream-processor",
-    "acks": "all",
-    "retries": 5,
-    "retry.backoff.ms": 100,
-    "enable.idempotence": True,
-})
+producer = Producer(
+    {
+        "bootstrap.servers": KAFKA_BROKERS,
+        "client.id": "stream-processor",
+        "acks": "all",
+        "retries": 5,
+        "retry.backoff.ms": 100,
+        "enable.idempotence": True,
+    }
+)
 
 
 def delivery_callback(err, msg):
@@ -180,8 +189,12 @@ def delivery_callback(err, msg):
     if err:
         log.error("anomaly_delivery_failed", error=str(err), topic=msg.topic())
     else:
-        log.debug("anomaly_delivered", topic=msg.topic(),
-                  partition=msg.partition(), offset=msg.offset())
+        log.debug(
+            "anomaly_delivered",
+            topic=msg.topic(),
+            partition=msg.partition(),
+            offset=msg.offset(),
+        )
 
 
 # ─── Graceful Shutdown ───────────────────────────────────────────────
@@ -224,12 +237,14 @@ def run():
       This gives us at-least-once processing: we might process a message
       twice, but never skip one. The idempotent producer handles dupes.
     """
-    log.info("processor_starting",
-             kafka=KAFKA_BROKERS,
-             input_topic=INPUT_TOPIC,
-             output_topic=OUTPUT_TOPIC,
-             consumer_group=CONSUMER_GROUP,
-             timescale_dsn="***")
+    log.info(
+        "processor_starting",
+        kafka=KAFKA_BROKERS,
+        input_topic=INPUT_TOPIC,
+        output_topic=OUTPUT_TOPIC,
+        consumer_group=CONSUMER_GROUP,
+        timescale_dsn="***",
+    )
 
     # Start Prometheus metrics HTTP server on port 8001
     start_http_server(METRICS_PORT)
@@ -273,14 +288,14 @@ def run():
         msg = consumer.poll(timeout=1.0)
 
         if msg is None:
-            continue   # No message, loop back and poll again
+            continue  # No message, loop back and poll again
 
         if msg.error():
             # Partition EOF is normal (we've caught up to the end)
             if msg.error().code() == KafkaError._PARTITION_EOF:
-                log.debug("partition_eof",
-                          partition=msg.partition(),
-                          offset=msg.offset())
+                log.debug(
+                    "partition_eof", partition=msg.partition(), offset=msg.offset()
+                )
             else:
                 log.error("consumer_error", error=str(msg.error()))
             continue
@@ -289,8 +304,12 @@ def run():
         try:
             raw = json.loads(msg.value())
         except json.JSONDecodeError as e:
-            log.error("json_decode_error", error=str(e),
-                      partition=msg.partition(), offset=msg.offset())
+            log.error(
+                "json_decode_error",
+                error=str(e),
+                partition=msg.partition(),
+                offset=msg.offset(),
+            )
             messages_processed.labels(device_type="unknown", status="error").inc()
             consumer.commit(message=msg)
             continue
@@ -301,7 +320,7 @@ def run():
         telemetry = validate_telemetry(raw)
         if telemetry is None:
             messages_processed.labels(device_type=device_type, status="invalid").inc()
-            consumer.commit(message=msg)   # Skip bad data, don't reprocess
+            consumer.commit(message=msg)  # Skip bad data, don't reprocess
             continue
 
         # ─── Step 4: Detect anomalies ────────────────────────────
@@ -365,8 +384,7 @@ def run():
         # the base fields) into a metrics dict for JSONB storage.
         base_fields = {"device_id", "device_type", "timestamp", "bridge_received_at"}
         metrics = {
-            k: v for k, v in telemetry.model_dump().items()
-            if k not in base_fields
+            k: v for k, v in telemetry.model_dump().items() if k not in base_fields
         }
         if writer.write_telemetry(
             device_id=telemetry.device_id,
@@ -402,18 +420,22 @@ def run():
 
         # Periodic progress log (every 50 messages)
         if total_processed % 50 == 0:
-            log.info("processing_progress",
-                     total_processed=total_processed,
-                     total_anomalies=total_anomalies)
+            log.info(
+                "processing_progress",
+                total_processed=total_processed,
+                total_anomalies=total_anomalies,
+            )
 
     # ─── Cleanup on shutdown ─────────────────────────────────────
     log.info("flushing_producer")
     producer.flush(timeout=10)
     consumer.close()
-    writer.close()   # Drain the TimescaleDB connection pool
-    log.info("processor_stopped",
-             total_processed=total_processed,
-             total_anomalies=total_anomalies)
+    writer.close()  # Drain the TimescaleDB connection pool
+    log.info(
+        "processor_stopped",
+        total_processed=total_processed,
+        total_anomalies=total_anomalies,
+    )
 
 
 # ─── Entry Point ─────────────────────────────────────────────────────

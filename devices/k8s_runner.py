@@ -26,8 +26,7 @@ from devices.conveyor_belt import ConveyorBelt
 
 # Configure structured logging (timestamps + thread names for debugging)
 logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(threadName)s] %(levelname)s %(message)s"
+    level=logging.INFO, format="%(asctime)s [%(threadName)s] %(levelname)s %(message)s"
 )
 log = logging.getLogger(__name__)
 
@@ -43,7 +42,9 @@ def run_device(device_cls, device_id: str, broker: str, port: int):
         port:       MQTT broker port (from K8s ConfigMap)
     """
     try:
-        log.info(f"Starting {device_cls.__name__} (id={device_id}, broker={broker}:{port})")
+        log.info(
+            f"Starting {device_cls.__name__} (id={device_id}, broker={broker}:{port})"
+        )
         # Create device instance — BaseDevice.__init__ connects to MQTT
         device = device_cls(device_id=device_id)
         # Override the MQTT connection to use the K8s service address
@@ -83,8 +84,8 @@ def main():
         t = threading.Thread(
             target=run_device,
             args=(device_cls, device_id, broker, port),
-            name=f"Device-{device_id}",       # Thread name appears in log output
-            daemon=True                        # Die with main thread
+            name=f"Device-{device_id}",  # Thread name appears in log output
+            daemon=True,  # Die with main thread
         )
         t.start()
         threads.append(t)

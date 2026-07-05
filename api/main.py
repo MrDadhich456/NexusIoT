@@ -22,7 +22,6 @@ Entry Point:
   uvicorn api.main:app --host 0.0.0.0 --port 8000
 """
 
-import os
 import time
 import logging
 from contextlib import asynccontextmanager
@@ -119,8 +118,9 @@ app.mount("/metrics", metrics_app)
 
 
 # ─── Health Check ────────────────────────────────────────────────────
-@app.get("/health", response_model=HealthStatus, tags=["system"],
-         summary="Health check")
+@app.get(
+    "/health", response_model=HealthStatus, tags=["system"], summary="Health check"
+)
 async def health_check():
     """
     Liveness/readiness probe for Kubernetes.

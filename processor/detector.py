@@ -59,8 +59,9 @@ class AnomalyDetector:
         "conveyor_belt": ["belt_speed_mps", "motor_current_a", "belt_tension_n"],
     }
 
-    def __init__(self, window_size: int = 100, z_threshold: float = 3.5,
-                 min_samples: int = 20):
+    def __init__(
+        self, window_size: int = 100, z_threshold: float = 3.5, min_samples: int = 20
+    ):
         self.window_size = window_size
         self.z_threshold = z_threshold
         self.min_samples = min_samples
@@ -117,7 +118,7 @@ class AnomalyDetector:
             variance = sum((x - mean) ** 2 for x in window) / len(window)
 
             # std: square root of variance (same units as the original data)
-            std = variance ** 0.5
+            std = variance**0.5
 
             # If all values are identical, std=0, z-score is undefined → skip
             if std == 0:
@@ -147,11 +148,13 @@ class AnomalyDetector:
                 }
                 anomalies.append(anomaly)
 
-                log.info("anomaly_detected",
-                         device_id=device_id,
-                         field=field,
-                         value=round(value, 2),
-                         z_score=round(z_score, 2),
-                         severity=severity)
+                log.info(
+                    "anomaly_detected",
+                    device_id=device_id,
+                    field=field,
+                    value=round(value, 2),
+                    z_score=round(z_score, 2),
+                    severity=severity,
+                )
 
         return anomalies

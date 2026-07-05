@@ -23,5 +23,6 @@ pandas==2.2.3
 prometheus-client==0.21.0
 structlog==24.4.0
 
-# Testing
+# Testing / Linting
 pytest==8.3.3
+ruff==0.15.20

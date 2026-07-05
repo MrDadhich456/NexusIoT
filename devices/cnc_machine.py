@@ -1,14 +1,14 @@
 from .base_device import BaseDevice
-import math, time
+
 
 class CNCMachine(BaseDevice):
     def __init__(self, device_id="cnc-001"):
         super().__init__(device_id, "cnc_machine")
-        self._tool_wear = 0.0         # accumulates over time
+        self._tool_wear = 0.0  # accumulates over time
         self._cycle_count = 0
 
     def read(self) -> dict:
-        self._tool_wear += 0.001      # gradual wear drift
+        self._tool_wear += 0.001  # gradual wear drift
         self._cycle_count += 1
         base_rpm = 3000
 
@@ -24,8 +24,9 @@ class CNCMachine(BaseDevice):
             "cycle_count": self._cycle_count,
             "cutting_temp_c": self.inject_anomaly(
                 self.add_noise(280 + self._tool_wear * 50)
-            )
+            ),
         }
+
 
 if __name__ == "__main__":
     CNCMachine().run()

@@ -35,6 +35,7 @@ class BaseTelemetry(BaseModel):
     - timestamp:          Set by BaseDevice.publish()  Unix epoch seconds
     - bridge_received_at: Set by the bridge when it forwarded to Kafka
     """
+
     device_id: str
     device_type: str
     timestamp: float
@@ -54,6 +55,7 @@ class CNCTelemetry(BaseTelemetry):
     - cycle_count:    0+       (monotonically increasing integer)
     - cutting_temp_c: -50–2000 (includes extreme anomaly spikes)
     """
+
     spindle_rpm: float = Field(ge=0, le=50000)
     vibration_g: float = Field(ge=0, le=100)
     tool_wear_pct: float = Field(ge=0, le=100)
@@ -73,6 +75,7 @@ class RoboticArmTelemetry(BaseTelemetry):
     - cycles_completed:  0+        (monotonically increasing)
     - servo_current_a:   0–200     (industrial servo amperage)
     """
+
     joint1_torque_nm: float = Field(ge=0, le=5000)
     joint2_torque_nm: float = Field(ge=0, le=5000)
     joint_temp_c: float = Field(ge=-50, le=500)
@@ -93,6 +96,7 @@ class ConveyorBeltTelemetry(BaseTelemetry):
     - items_per_min:   0–500   (production throughput)
     - runtime_hours:   0+      (cumulative, always increasing)
     """
+
     belt_speed_mps: float = Field(ge=0, le=50)
     motor_current_a: float = Field(ge=0, le=200)
     belt_tension_n: float = Field(ge=0, le=5000)
@@ -136,17 +140,21 @@ def validate_telemetry(raw: dict) -> BaseTelemetry | None:
     schema = DEVICE_SCHEMAS.get(device_type)
 
     if schema is None:
-        log.warning("unknown_device_type",
-                    device_type=device_type,
-                    device_id=raw.get("device_id"))
+        log.warning(
+            "unknown_device_type",
+            device_type=device_type,
+            device_id=raw.get("device_id"),
+        )
         return None
 
     try:
         return schema(**raw)
     except ValidationError as e:
-        log.warning("validation_failed",
-                    errors=e.error_count(),
-                    device_id=raw.get("device_id"),
-                    device_type=device_type,
-                    details=str(e.errors()[0]) if e.errors() else "unknown")
+        log.warning(
+            "validation_failed",
+            errors=e.error_count(),
+            device_id=raw.get("device_id"),
+            device_type=device_type,
+            details=str(e.errors()[0]) if e.errors() else "unknown",
+        )
         return None

@@ -37,8 +37,9 @@ def _parse_shap(raw):
     return raw
 
 
-@router.get("/anomalies", response_model=AnomalyListResponse,
-            summary="List anomaly events")
+@router.get(
+    "/anomalies", response_model=AnomalyListResponse, summary="List anomaly events"
+)
 async def list_anomalies(
     device_id: str | None = Query(default=None),
     severity: str | None = Query(default=None),
@@ -107,17 +108,26 @@ async def list_anomalies(
 
         anomalies = [
             AnomalyEvent(
-                time=r["time"], detected_at=r["detected_at"],
-                device_id=r["device_id"], device_type=r["device_type"],
-                field=r["field"], value=r["value"], mean=r["mean"],
-                std=r["std"], z_score=r["z_score"], severity=r["severity"],
+                time=r["time"],
+                detected_at=r["detected_at"],
+                device_id=r["device_id"],
+                device_type=r["device_type"],
+                field=r["field"],
+                value=r["value"],
+                mean=r["mean"],
+                std=r["std"],
+                z_score=r["z_score"],
+                severity=r["severity"],
                 shap_contributions=_parse_shap(r["shap_contributions"]),
             )
             for r in rows
         ]
 
         return AnomalyListResponse(
-            anomalies=anomalies, total=total, limit=limit, offset=offset,
+            anomalies=anomalies,
+            total=total,
+            limit=limit,
+            offset=offset,
         )
 
     except Exception as e:
@@ -126,11 +136,16 @@ async def list_anomalies(
         raise HTTPException(status_code=500, detail="Database query failed")
 
 
-@router.get("/anomalies/explain", response_model=SHAPExplanation,
-            summary="SHAP explanation for an anomaly")
+@router.get(
+    "/anomalies/explain",
+    response_model=SHAPExplanation,
+    summary="SHAP explanation for an anomaly",
+)
 async def explain_anomaly(
     device_id: str = Query(description="Device ID, e.g. 'cnc-001'"),
-    event_time: datetime = Query(alias="time", description="Anomaly timestamp (ISO 8601)"),
+    event_time: datetime = Query(
+        alias="time", description="Anomaly timestamp (ISO 8601)"
+    ),
     field: str = Query(description="Metric field, e.g. 'vibration_g'"),
 ):
     """
@@ -153,7 +168,9 @@ async def explain_anomaly(
             WHERE device_id = $1 AND time = $2 AND field = $3
             LIMIT 1
             """,
-            device_id, event_time, field,
+            device_id,
+            event_time,
+            field,
         )
         db_query_duration.labels(query="explain_anomaly").observe(
             time.monotonic() - query_start
@@ -163,12 +180,14 @@ async def explain_anomaly(
             raise HTTPException(
                 status_code=404,
                 detail=f"No anomaly found for device '{device_id}' "
-                       f"at {event_time.isoformat()} on field '{field}'",
+                f"at {event_time.isoformat()} on field '{field}'",
             )
 
         return SHAPExplanation(
-            device_id=row["device_id"], time=row["time"],
-            field=row["field"], severity=row["severity"],
+            device_id=row["device_id"],
+            time=row["time"],
+            field=row["field"],
+            severity=row["severity"],
             shap_contributions=_parse_shap(row["shap_contributions"]),
         )
 

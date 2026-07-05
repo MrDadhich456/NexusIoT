@@ -29,7 +29,7 @@ from fastapi import APIRouter, Query, HTTPException
 
 from api.database import get_pool
 from api.models import DeviceInfo, TelemetryReading, TelemetryHistoryResponse
-from api.metrics import api_request_duration, db_query_duration, db_query_errors
+from api.metrics import db_query_duration, db_query_errors
 
 structlog.configure(
     wrapper_class=structlog.make_filtering_bound_logger(logging.INFO),
