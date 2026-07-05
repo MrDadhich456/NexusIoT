@@ -29,6 +29,7 @@ from confluent_kafka.admin import AdminClient, NewTopic
 # In production, logs feed into ELK / Loki / CloudWatch — JSON is
 # machine-parseable and lets us filter by fields like device_id.
 import structlog
+
 structlog.configure(
     wrapper_class=structlog.make_filtering_bound_logger(logging.INFO),
 )
@@ -39,16 +40,19 @@ log = structlog.get_logger()
 # All config comes from environment variables so the SAME code runs
 # in dev, staging, and production — only the env vars change.
 # Defaults point to localhost for running outside Docker.
-MQTT_BROKER   = os.getenv("MQTT_BROKER", "localhost")
-MQTT_PORT     = int(os.getenv("MQTT_PORT", "1883"))
+MQTT_BROKER = os.getenv("MQTT_BROKER", "localhost")
+MQTT_PORT = int(os.getenv("MQTT_PORT", "1883"))
 KAFKA_BROKERS = os.getenv("KAFKA_BROKERS", "localhost:19094")
-KAFKA_TOPIC   = os.getenv("KAFKA_TOPIC", "raw-telemetry")
+KAFKA_TOPIC = os.getenv("KAFKA_TOPIC", "raw-telemetry")
 
 
 # ─── Kafka Topic Bootstrap ───────────────────────────────────────────
-def ensure_topic_exists(bootstrap_servers: str, topic: str,
-                        num_partitions: int = 6,
-                        replication_factor: int = 3):
+def ensure_topic_exists(
+    bootstrap_servers: str,
+    topic: str,
+    num_partitions: int = 6,
+    replication_factor: int = 3,
+):
     """
     Create the Kafka topic if it doesn't already exist.
 
@@ -78,34 +82,36 @@ def ensure_topic_exists(bootstrap_servers: str, topic: str,
     )
     futures = admin.create_topics([new_topic])
     for topic_name, future in futures.items():
-        future.result()   # blocks until creation completes; raises on error
-        log.info("topic_created", topic=topic_name,
-                 partitions=num_partitions, replication=replication_factor)
+        future.result()  # blocks until creation completes; raises on error
+        log.info(
+            "topic_created",
+            topic=topic_name,
+            partitions=num_partitions,
+            replication=replication_factor,
+        )
 
 
 # ─── Kafka Producer ──────────────────────────────────────────────────
 # Configured for RELIABILITY over raw throughput.
-producer = Producer({
-    "bootstrap.servers": KAFKA_BROKERS,
-
-    # Identifies this producer in Kafka broker logs & metrics
-    "client.id": "mqtt-kafka-bridge",
-
-    # acks=all → wait for ALL in-sync replicas to confirm the write.
-    # This is the STRONGEST durability guarantee Kafka offers.
-    # acks=1 (leader-only) is faster but risks data loss if leader crashes
-    # before replicating.
-    "acks": "all",
-
-    # Automatic retry on transient failures (network blip, broker restart)
-    "retries": 5,
-    "retry.backoff.ms": 100,
-
-    # Idempotent producer: even if a retry sends the same message twice,
-    # Kafka deduplicates it server-side. Combined with acks=all, this
-    # gives us exactly-once semantics from producer → broker.
-    "enable.idempotence": True,
-})
+producer = Producer(
+    {
+        "bootstrap.servers": KAFKA_BROKERS,
+        # Identifies this producer in Kafka broker logs & metrics
+        "client.id": "mqtt-kafka-bridge",
+        # acks=all → wait for ALL in-sync replicas to confirm the write.
+        # This is the STRONGEST durability guarantee Kafka offers.
+        # acks=1 (leader-only) is faster but risks data loss if leader crashes
+        # before replicating.
+        "acks": "all",
+        # Automatic retry on transient failures (network blip, broker restart)
+        "retries": 5,
+        "retry.backoff.ms": 100,
+        # Idempotent producer: even if a retry sends the same message twice,
+        # Kafka deduplicates it server-side. Combined with acks=all, this
+        # gives us exactly-once semantics from producer → broker.
+        "enable.idempotence": True,
+    }
+)
 
 
 def delivery_callback(err, msg):
@@ -115,11 +121,14 @@ def delivery_callback(err, msg):
     exactly which messages succeeded and which failed.
     """
     if err:
-        log.error("kafka_delivery_failed", error=str(err),
-                  topic=msg.topic())
+        log.error("kafka_delivery_failed", error=str(err), topic=msg.topic())
     else:
-        log.debug("kafka_delivered", topic=msg.topic(),
-                  partition=msg.partition(), offset=msg.offset())
+        log.debug(
+            "kafka_delivered",
+            topic=msg.topic(),
+            partition=msg.partition(),
+            offset=msg.offset(),
+        )
 
 
 # ─── MQTT Callbacks ──────────────────────────────────────────────────
@@ -202,10 +211,12 @@ signal.signal(signal.SIGINT, shutdown)
 
 # ─── Main Entry Point ────────────────────────────────────────────────
 if __name__ == "__main__":
-    log.info("bridge_starting",
-             mqtt=f"{MQTT_BROKER}:{MQTT_PORT}",
-             kafka=KAFKA_BROKERS,
-             topic=KAFKA_TOPIC)
+    log.info(
+        "bridge_starting",
+        mqtt=f"{MQTT_BROKER}:{MQTT_PORT}",
+        kafka=KAFKA_BROKERS,
+        topic=KAFKA_TOPIC,
+    )
 
     # Step 1: Ensure the target Kafka topic exists
     # Retry in case Kafka brokers aren't fully up yet (common in Docker)

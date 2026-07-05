@@ -142,10 +142,12 @@ class TimescaleWriter:
             timeout=10,
         )
 
-        log.info("timescale_writer_initialized",
-                 dsn=self._sanitize_dsn(dsn),
-                 min_pool=min_pool,
-                 max_pool=max_pool)
+        log.info(
+            "timescale_writer_initialized",
+            dsn=self._sanitize_dsn(dsn),
+            min_pool=min_pool,
+            max_pool=max_pool,
+        )
 
     @staticmethod
     def _sanitize_dsn(dsn: str) -> str:
@@ -167,8 +169,9 @@ class TimescaleWriter:
                     return f"{prefix}{user}:***@{rest}"
         return dsn
 
-    def write_telemetry(self, device_id: str, device_type: str,
-                        timestamp: float, metrics: dict) -> bool:
+    def write_telemetry(
+        self, device_id: str, device_type: str, timestamp: float, metrics: dict
+    ) -> bool:
         """
         Write one validated telemetry reading to the telemetry table.
 
@@ -243,25 +246,30 @@ class TimescaleWriter:
         return self._execute_with_retry(
             self.INSERT_ANOMALY,
             (
-                ts,                          # time
-                detected,                    # detected_at
-                anomaly["device_id"],        # device_id
-                anomaly["device_type"],       # device_type
-                anomaly["field"],            # field
-                anomaly["value"],            # value
-                anomaly["mean"],             # mean
-                anomaly["std"],              # std
-                anomaly["z_score"],          # z_score
-                anomaly["severity"],         # severity
-                shap_json,                   # shap_contributions
+                ts,  # time
+                detected,  # detected_at
+                anomaly["device_id"],  # device_id
+                anomaly["device_type"],  # device_type
+                anomaly["field"],  # field
+                anomaly["value"],  # value
+                anomaly["mean"],  # mean
+                anomaly["std"],  # std
+                anomaly["z_score"],  # z_score
+                anomaly["severity"],  # severity
+                shap_json,  # shap_contributions
             ),
             operation="write_anomaly",
             device_id=anomaly["device_id"],
         )
 
-    def _execute_with_retry(self, query: LiteralString, params: tuple,
-                            operation: str, device_id: str,
-                            max_retries: int = 3) -> bool:
+    def _execute_with_retry(
+        self,
+        query: LiteralString,
+        params: tuple,
+        operation: str,
+        device_id: str,
+        max_retries: int = 3,
+    ) -> bool:
         """
         Execute a parameterised SQL query with retry + exponential backoff.
 
@@ -314,24 +322,28 @@ class TimescaleWriter:
 
             except Exception as e:
                 # Calculate backoff: 1s, 2s, 4s (exponential)
-                wait = 2 ** attempt
-                log.warning("db_write_retry",
-                            operation=operation,
-                            device_id=device_id,
-                            attempt=attempt + 1,
-                            max_retries=max_retries,
-                            wait_seconds=wait,
-                            error=str(e))
+                wait = 2**attempt
+                log.warning(
+                    "db_write_retry",
+                    operation=operation,
+                    device_id=device_id,
+                    attempt=attempt + 1,
+                    max_retries=max_retries,
+                    wait_seconds=wait,
+                    error=str(e),
+                )
                 time.sleep(wait)
 
         # All retries exhausted — log error but DON'T crash.
         # The Kafka consumer will continue processing; we just lose
         # this one DB write. The data still exists in Kafka and will
         # be in the anomaly-events topic if it was an anomaly.
-        log.error("db_write_failed",
-                  operation=operation,
-                  device_id=device_id,
-                  max_retries=max_retries)
+        log.error(
+            "db_write_failed",
+            operation=operation,
+            device_id=device_id,
+            max_retries=max_retries,
+        )
         return False
 
     def close(self):

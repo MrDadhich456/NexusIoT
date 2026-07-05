@@ -21,6 +21,7 @@ from pydantic import BaseModel, Field
 
 # ─── Device Endpoints ────────────────────────────────────────────────
 
+
 class DeviceInfo(BaseModel):
     """
     Summary info for a device — returned by GET /api/devices.
@@ -36,6 +37,7 @@ class DeviceInfo(BaseModel):
         "last_seen": "2026-06-23T09:00:00Z"
       }
     """
+
     device_id: str = Field(description="Unique device identifier, e.g. 'cnc-001'")
     device_type: str = Field(description="Device type string, e.g. 'cnc_machine'")
     last_seen: datetime = Field(description="Timestamp of the most recent reading")
@@ -63,6 +65,7 @@ class TelemetryReading(BaseModel):
         }
       }
     """
+
     time: datetime = Field(description="When the device recorded this reading")
     device_id: str = Field(description="Device identifier")
     device_type: str = Field(description="Device type")
@@ -87,6 +90,7 @@ class TelemetryHistoryResponse(BaseModel):
         "offset": 0
       }
     """
+
     device_id: str
     readings: list[TelemetryReading]
     total: int = Field(description="Total number of readings matching the query")
@@ -95,6 +99,7 @@ class TelemetryHistoryResponse(BaseModel):
 
 
 # ─── Anomaly Endpoints ───────────────────────────────────────────────
+
 
 class AnomalyEvent(BaseModel):
     """
@@ -123,6 +128,7 @@ class AnomalyEvent(BaseModel):
         }
       }
     """
+
     time: datetime = Field(description="When the device recorded the anomalous reading")
     detected_at: datetime = Field(description="When the processor flagged it")
     device_id: str = Field(description="Device identifier")
@@ -143,6 +149,7 @@ class AnomalyListResponse(BaseModel):
     """
     Paginated anomaly list — returned by GET /api/anomalies.
     """
+
     anomalies: list[AnomalyEvent]
     total: int = Field(description="Total matching anomaly events")
     limit: int
@@ -172,6 +179,7 @@ class SHAPExplanation(BaseModel):
         }
       }
     """
+
     device_id: str
     time: datetime
     field: str
@@ -183,6 +191,7 @@ class SHAPExplanation(BaseModel):
 
 
 # ─── Health Endpoint ─────────────────────────────────────────────────
+
 
 class HealthStatus(BaseModel):
     """
@@ -199,6 +208,7 @@ class HealthStatus(BaseModel):
         "uptime_seconds": 3642.5
       }
     """
+
     status: str = Field(description="'healthy' or 'degraded'")
     database: str = Field(description="'connected' or 'disconnected'")
     kafka: str = Field(description="'connected' or 'disconnected'")

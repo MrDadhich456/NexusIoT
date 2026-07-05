@@ -149,6 +149,7 @@ manager = ConnectionManager()
 
 # ─── WebSocket Endpoints ─────────────────────────────────────────────
 
+
 @router.websocket("/ws/telemetry/{device_id}")
 async def telemetry_ws(ws: WebSocket, device_id: str):
     """
@@ -184,6 +185,7 @@ async def anomaly_ws(ws: WebSocket):
 
 # ─── Kafka → WebSocket Fan-out (Background Task) ────────────────────
 
+
 async def start_kafka_consumer():
     """
     Start the background Kafka consumer that fans out messages
@@ -191,8 +193,7 @@ async def start_kafka_consumer():
     """
     global _consumer_task
     _consumer_task = asyncio.create_task(_kafka_fanout_loop())
-    log.info("kafka_ws_fanout_started",
-             topics=[TELEMETRY_TOPIC, ANOMALY_TOPIC])
+    log.info("kafka_ws_fanout_started", topics=[TELEMETRY_TOPIC, ANOMALY_TOPIC])
 
 
 async def stop_kafka_consumer():
@@ -218,15 +219,16 @@ async def _kafka_fanout_loop():
     Consumer group "ws-fanout" is separate from "stream-processor"
     so the API gets its own independent copy of all messages.
     """
-    consumer = Consumer({
-        "bootstrap.servers": KAFKA_BROKERS,
-        "group.id": "ws-fanout",
-        "auto.offset.reset": "latest",   # Only stream NEW messages
-        "enable.auto.commit": True,       # Auto-commit is fine for fan-out
-    })
+    consumer = Consumer(
+        {
+            "bootstrap.servers": KAFKA_BROKERS,
+            "group.id": "ws-fanout",
+            "auto.offset.reset": "latest",  # Only stream NEW messages
+            "enable.auto.commit": True,  # Auto-commit is fine for fan-out
+        }
+    )
     consumer.subscribe([TELEMETRY_TOPIC, ANOMALY_TOPIC])
-    log.info("kafka_consumer_subscribed",
-             topics=[TELEMETRY_TOPIC, ANOMALY_TOPIC])
+    log.info("kafka_consumer_subscribed", topics=[TELEMETRY_TOPIC, ANOMALY_TOPIC])
 
     try:
         while True:

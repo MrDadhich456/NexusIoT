@@ -60,25 +60,25 @@ log = structlog.get_logger()
 #      order is used during training AND explanation.
 EXPLAINER_FEATURES: dict[str, list[str]] = {
     "cnc_machine": [
-        "spindle_rpm",       # RPM of the cutting spindle (base ~3000)
-        "vibration_g",       # Vibration in g-force (base ~0.8)
-        "cutting_temp_c",    # Cutting temperature in °C (base ~280)
-        "tool_wear_pct",     # Tool wear percentage (0-100, drifts up)
-        "feed_rate_mmpm",    # Feed rate in mm/min (base ~500)
+        "spindle_rpm",  # RPM of the cutting spindle (base ~3000)
+        "vibration_g",  # Vibration in g-force (base ~0.8)
+        "cutting_temp_c",  # Cutting temperature in °C (base ~280)
+        "tool_wear_pct",  # Tool wear percentage (0-100, drifts up)
+        "feed_rate_mmpm",  # Feed rate in mm/min (base ~500)
     ],
     "robotic_arm": [
         "joint1_torque_nm",  # Joint 1 torque in Nm (base ~45)
         "joint2_torque_nm",  # Joint 2 torque in Nm (base ~32)
-        "joint_temp_c",      # Joint temperature in °C (base ~68)
-        "position_error_mm", # Position error in mm (base ~0.12)
-        "servo_current_a",   # Servo current in Amps (base ~8.4)
+        "joint_temp_c",  # Joint temperature in °C (base ~68)
+        "position_error_mm",  # Position error in mm (base ~0.12)
+        "servo_current_a",  # Servo current in Amps (base ~8.4)
     ],
     "conveyor_belt": [
-        "belt_speed_mps",    # Belt speed in m/s
-        "motor_current_a",   # Motor current in Amps
-        "belt_tension_n",    # Belt tension in Newtons (base ~350)
-        "roller_temp_c",     # Roller temperature in °C
-        "items_per_min",     # Production throughput
+        "belt_speed_mps",  # Belt speed in m/s
+        "motor_current_a",  # Motor current in Amps
+        "belt_tension_n",  # Belt tension in Newtons (base ~350)
+        "roller_temp_c",  # Roller temperature in °C
+        "items_per_min",  # Production throughput
     ],
 }
 
@@ -115,9 +115,7 @@ class SHAPExplainer:
         # Old readings are automatically evicted, so the model always
         # reflects CURRENT operating conditions, not conditions from
         # hours ago. This is critical for drifting sensors (tool wear).
-        self._normal_data: dict[str, deque] = defaultdict(
-            lambda: deque(maxlen=500)
-        )
+        self._normal_data: dict[str, deque] = defaultdict(lambda: deque(maxlen=500))
 
         # ─── Per-device trained models ───────────────────────────────
         # Each device gets its own IsolationForest because sensor baselines
@@ -135,8 +133,7 @@ class SHAPExplainer:
         # Used with modulo to trigger periodic retraining.
         self._sample_counts: dict[str, int] = defaultdict(int)
 
-    def update_normal(self, device_id: str, device_type: str,
-                      telemetry: BaseTelemetry):
+    def update_normal(self, device_id: str, device_type: str, telemetry: BaseTelemetry):
         """
         Feed a NON-anomalous reading into the training buffer.
 
@@ -252,13 +249,16 @@ class SHAPExplainer:
         # (which uses sampling) and gives exact results for tree models.
         self._explainers[device_id] = shap.TreeExplainer(model)
 
-        log.info("shap_model_trained",
-                 device_id=device_id,
-                 samples=len(data),
-                 features=len(features))
+        log.info(
+            "shap_model_trained",
+            device_id=device_id,
+            samples=len(data),
+            features=len(features),
+        )
 
-    def explain(self, device_id: str, device_type: str,
-                telemetry: BaseTelemetry) -> Optional[dict[str, float]]:
+    def explain(
+        self, device_id: str, device_type: str, telemetry: BaseTelemetry
+    ) -> Optional[dict[str, float]]:
         """
         Compute SHAP contribution percentages for an anomalous reading.
 
@@ -333,13 +333,13 @@ class SHAPExplainer:
         # ─── Sort by contribution (highest first) ────────────────
         # Engineers want to see the most impactful feature first.
         # Example: {"spindle_rpm": 68.2, "vibration_g": 22.1, ...}
-        contributions = dict(
-            sorted(contributions.items(), key=lambda x: -x[1])
-        )
+        contributions = dict(sorted(contributions.items(), key=lambda x: -x[1]))
 
-        log.info("shap_explanation_computed",
-                 device_id=device_id,
-                 top_feature=list(contributions.keys())[0],
-                 top_contribution=list(contributions.values())[0])
+        log.info(
+            "shap_explanation_computed",
+            device_id=device_id,
+            top_feature=list(contributions.keys())[0],
+            top_contribution=list(contributions.values())[0],
+        )
 
         return contributions
