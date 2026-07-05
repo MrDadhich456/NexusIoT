@@ -9,7 +9,7 @@ on:
 
 jobs:
   python-ci:
-    name: Python Lint & Test
+    name: "Python Lint & Test"
     runs-on: ubuntu-24.04
 
     steps:
@@ -38,7 +38,7 @@ jobs:
           pytest
 
   terraform-ci:
-    name: Terraform Format & Validate
+    name: "Terraform Format & Validate"
     runs-on: ubuntu-24.04
 
     steps:
@@ -87,17 +87,17 @@ jobs:
           docker build -t nexusiot/devices:test -f Dockerfile.devices .
 
   deploy:
-    name: CD: Deploy to AWS EC2
+    name: "CD: Deploy to AWS EC2"
     needs: [python-ci, terraform-ci, docker-build-check]
     runs-on: ubuntu-24.04
-    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+    if: "github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'"
 
     steps:
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USERNAME || 'ubuntu' }}
+          username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.EC2_SSH_KEY }}
           port: 22
           script_stop: true
