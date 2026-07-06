@@ -119,17 +119,18 @@ jobs:
             git checkout ${{ github.ref_name }}
             git pull origin ${{ github.ref_name }}
             
-            # 3. Deploy with Docker Compose
-            # Uses Docker Compose on t3.micro (1GB RAM + 4GB swap)
+            # 3. Deploy with Docker Compose (lightweight single-broker config)
+            # Uses docker-compose.light.yml for t3.micro (1GB RAM + 4GB swap)
+            # Full 3-broker setup: docker-compose.yml (for local dev / larger instances)
             # K8s manifests in k8s/ are preserved for production scaling
-            echo "🐳 Deploying with Docker Compose..."
-            docker compose down --remove-orphans || true
-            docker compose build --parallel
-            docker compose up -d
+            echo "🐳 Deploying with Docker Compose (light mode)..."
+            docker compose -f docker-compose.light.yml down --remove-orphans || true
+            docker compose -f docker-compose.light.yml build --parallel
+            docker compose -f docker-compose.light.yml up -d
             
             # 4. Wait for services to become healthy
             echo "⏳ Waiting for services to start..."
-            sleep 30
+            sleep 45
             
             # 5. Post-Deployment Health Check
             echo "🔍 Verifying API health..."
@@ -147,14 +148,14 @@ jobs:
             
             if [ "\$SUCCESS" = "false" ]; then
               echo "⚠️ API health check timed out, checking container status..."
-              docker compose ps
+              docker compose -f docker-compose.light.yml ps
               echo "📋 Recent API logs:"
-              docker compose logs --tail=20 api
+              docker compose -f docker-compose.light.yml logs --tail=20 api
             fi
             
             # 6. Show running services
             echo ""
             echo "📊 Running Services:"
-            docker compose ps
+            docker compose -f docker-compose.light.yml ps
             echo ""
             echo "🎉 Deployment completed!"
