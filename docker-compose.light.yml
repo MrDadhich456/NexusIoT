@@ -1,0 +1,171 @@
+# ============================================================================
+# NexusIoT — Lightweight Docker Compose (Free-Tier / t3.micro)
+# ============================================================================
+# Single Kafka broker, reduced memory footprint.
+# Full 3-broker setup: use docker-compose.yml
+# K8s production setup: use k8s/deploy.sh
+# ============================================================================
+
+services:
+  mosquitto:
+    image: eclipse-mosquitto:2
+    container_name: nexusiot-mosquitto
+    ports:
+      - "1883:1883"
+    volumes:
+      - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf
+      - mosquitto_data:/mosquitto/data
+      - mosquitto_log:/mosquitto/log
+    restart: unless-stopped
+
+  # Single Kafka broker (KRaft mode — no ZooKeeper)
+  kafka:
+    image: apache/kafka:latest
+    container_name: nexusiot-kafka
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093,EXTERNAL://0.0.0.0:9094
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,EXTERNAL://localhost:19094
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      CLUSTER_ID: NexusIoT-Kafka-Cluster-01
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_HEAP_OPTS: "-Xmx256m -Xms128m"
+    ports:
+      - "19094:9094"
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 > /dev/null 2>&1"]
+      interval: 15s
+      timeout: 10s
+      retries: 15
+      start_period: 30s
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: nexusiot-kafka-ui
+    ports:
+      - "8080:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: nexusiot
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+    depends_on:
+      kafka:
+        condition: service_healthy
+    restart: unless-stopped
+
+  bridge:
+    build:
+      context: .
+      dockerfile: Dockerfile.bridge
+    container_name: nexusiot-bridge
+    environment:
+      MQTT_BROKER: mosquitto
+      MQTT_PORT: "1883"
+      KAFKA_BROKERS: kafka:9092
+      KAFKA_TOPIC: raw-telemetry
+    depends_on:
+      mosquitto:
+        condition: service_started
+      kafka:
+        condition: service_healthy
+    restart: unless-stopped
+
+  timescaledb:
+    image: timescale/timescaledb:latest-pg16
+    container_name: nexusiot-timescaledb
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: nexusiot
+      POSTGRES_PASSWORD: nexusiot
+      POSTGRES_DB: nexusiot
+    volumes:
+      - timescale_data:/var/lib/postgresql/data
+      - ./schema.sql:/docker-entrypoint-initdb.d/001-schema.sql:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nexusiot"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  processor:
+    build:
+      context: .
+      dockerfile: Dockerfile.processor
+    container_name: nexusiot-processor
+    ports:
+      - "8001:8001"
+    environment:
+      KAFKA_BROKERS: kafka:9092
+      INPUT_TOPIC: raw-telemetry
+      OUTPUT_TOPIC: anomaly-events
+      CONSUMER_GROUP: stream-processor
+      METRICS_PORT: "8001"
+      TIMESCALE_DSN: postgresql://nexusiot:nexusiot@timescaledb:5432/nexusiot
+    depends_on:
+      kafka:
+        condition: service_healthy
+      timescaledb:
+        condition: service_healthy
+    restart: unless-stopped
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    container_name: nexusiot-api
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql://nexusiot:nexusiot@timescaledb:5432/nexusiot
+      KAFKA_BROKERS: kafka:9092
+      INPUT_TOPIC: raw-telemetry
+      OUTPUT_TOPIC: anomaly-events
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: nexusiot-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: nexusiot-grafana
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/etc/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+
+volumes:
+  mosquitto_data:
+  mosquitto_log:
+  kafka_data:
+  timescale_data:
+  grafana_data:
