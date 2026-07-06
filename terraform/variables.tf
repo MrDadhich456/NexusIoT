@@ -5,9 +5,9 @@ variable "aws_region" {
 }
 
 variable "instance_type" {
-  description = "The EC2 instance type (t3.micro is AWS free-tier eligible)"
+  description = "The EC2 instance type (t3.medium: 2 vCPUs, 4GB RAM — minimum for Kubernetes)"
   type        = string
-  default     = "t3.micro"
+  default     = "t3.medium"
 }
 
 variable "key_name" {

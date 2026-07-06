@@ -122,7 +122,7 @@ jobs:
             echo "☸️ Checking Minikube status..."
             if ! minikube status; then
               echo "🔄 Starting Minikube..."
-              minikube start --cpus 2 --memory 3072 --driver=docker
+              minikube start --cpus 2 --memory 4096 --driver=docker
             fi
             
             # 4. Ensure Ingress Addon is Enabled
