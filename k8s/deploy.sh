@@ -5,7 +5,7 @@
 # One-command deployment of the entire NexusIoT platform to Minikube.
 #
 # Prerequisites:
-#   1. Minikube running:        minikube start --cpus 2 --memory 3072
+#   1. Minikube running:        minikube start --cpus 4 --memory 8192
 #   2. Ingress addon enabled:   minikube addons enable ingress
 #   3. Docker CLI installed:    docker --version
 #   4. kubectl installed:       kubectl version --client
