@@ -44,6 +44,7 @@ MQTT_BROKER = os.getenv("MQTT_BROKER", "localhost")
 MQTT_PORT = int(os.getenv("MQTT_PORT", "1883"))
 KAFKA_BROKERS = os.getenv("KAFKA_BROKERS", "localhost:19094")
 KAFKA_TOPIC = os.getenv("KAFKA_TOPIC", "raw-telemetry")
+KAFKA_REPLICATION_FACTOR = int(os.getenv("KAFKA_REPLICATION_FACTOR", "3"))
 
 
 # ─── Kafka Topic Bootstrap ───────────────────────────────────────────
@@ -222,7 +223,11 @@ if __name__ == "__main__":
     # Retry in case Kafka brokers aren't fully up yet (common in Docker)
     for attempt in range(10):
         try:
-            ensure_topic_exists(KAFKA_BROKERS, KAFKA_TOPIC)
+            ensure_topic_exists(
+                KAFKA_BROKERS,
+                KAFKA_TOPIC,
+                replication_factor=KAFKA_REPLICATION_FACTOR,
+            )
             break
         except Exception as e:
             log.warning("kafka_not_ready", attempt=attempt + 1, error=str(e))
