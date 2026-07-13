@@ -56,6 +56,7 @@ INPUT_TOPIC = os.getenv("INPUT_TOPIC", "raw-telemetry")
 OUTPUT_TOPIC = os.getenv("OUTPUT_TOPIC", "anomaly-events")
 CONSUMER_GROUP = os.getenv("CONSUMER_GROUP", "stream-processor")
 METRICS_PORT = int(os.getenv("METRICS_PORT", "8001"))
+KAFKA_REPLICATION_FACTOR = int(os.getenv("KAFKA_REPLICATION_FACTOR", "3"))
 TIMESCALE_DSN = os.getenv(
     "TIMESCALE_DSN", "postgresql://nexusiot:nexusiot@localhost:5432/nexusiot"
 )
@@ -253,7 +254,11 @@ def run():
     # Ensure the output topic exists (retry if Kafka isn't ready yet)
     for attempt in range(10):
         try:
-            ensure_topic_exists(KAFKA_BROKERS, OUTPUT_TOPIC)
+            ensure_topic_exists(
+                KAFKA_BROKERS,
+                OUTPUT_TOPIC,
+                replication_factor=KAFKA_REPLICATION_FACTOR,
+            )
             break
         except Exception as e:
             log.warning("kafka_not_ready", attempt=attempt + 1, error=str(e))

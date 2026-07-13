@@ -71,6 +71,7 @@ services:
       MQTT_PORT: "1883"
       KAFKA_BROKERS: kafka:9092
       KAFKA_TOPIC: raw-telemetry
+      KAFKA_REPLICATION_FACTOR: "1"
     depends_on:
       mosquitto:
         condition: service_started
@@ -110,6 +111,7 @@ services:
       OUTPUT_TOPIC: anomaly-events
       CONSUMER_GROUP: stream-processor
       METRICS_PORT: "8001"
+      KAFKA_REPLICATION_FACTOR: "1"
       TIMESCALE_DSN: postgresql://nexusiot:nexusiot@timescaledb:5432/nexusiot
     depends_on:
       kafka:
