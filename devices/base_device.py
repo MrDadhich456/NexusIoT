@@ -30,6 +30,10 @@ class BaseDevice:
         payload["device_id"] = self.device_id
         payload["device_type"] = self.device_type
         payload["timestamp"] = time.time()
+
+        # Print to terminal so we can see the data!
+        print(f"[{self.device_id}] Publishing: {json.dumps(payload)}")
+
         self.client.publish(
             self.topic,
             json.dumps(payload),
