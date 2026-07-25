@@ -11,6 +11,18 @@ build/
 .venv/
 venv/
 .env
+.env.*
+!.env.example
+!.env.*.example
+
+# Private configuration and credentials
+k8s/secrets.yaml
+*.tfvars
+!*.tfvars.example
+*.pem
+*.key
+*.p12
+*.pfx
 
 # IDE
 .vscode/
@@ -25,7 +37,6 @@ Thumbs.db
 *.tfstate
 *.tfstate.backup
 *.tfplan
-nexusiot-key.pem
 
 # Docker
 *.log
